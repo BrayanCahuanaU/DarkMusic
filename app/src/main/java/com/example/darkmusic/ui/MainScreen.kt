@@ -27,6 +27,7 @@ import com.example.darkmusic.core.designsystem.CanvasBlack
 import com.example.darkmusic.core.designsystem.LabelSecondaryDark
 import com.example.darkmusic.ui.home.HomeScreen
 import com.example.darkmusic.ui.navigation.Screen
+import com.example.darkmusic.ui.search.SearchScreen
 
 /**
  * Contenedor principal de la aplicación que gestiona la navegación por pestañas (BottomBar).
@@ -98,7 +99,7 @@ fun MainScreen() {
             composable(Screen.New.route) { PlaceholderScreen("Novedades") }
             composable(Screen.Radio.route) { PlaceholderScreen("Radio") }
             composable(Screen.Library.route) { PlaceholderScreen("Biblioteca") }
-            composable(Screen.Search.route) { PlaceholderScreen("Buscar") }
+            composable(Screen.Search.route) { SearchScreen() }
         }
     }
 }

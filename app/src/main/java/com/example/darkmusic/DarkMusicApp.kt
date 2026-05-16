@@ -12,10 +12,10 @@ class DarkMusicApp : Application() {
     override fun onCreate() {
         super.onCreate()
         
-        // Inicialización corregida con localización
+        // Inicialización con localización explícita para evitar problemas con tendencias
         NewPipe.init(
             NewPipeDownloader(OkHttpClient()),
-            Localization.DEFAULT
+            Localization("US", "en")
         )
     }
 }

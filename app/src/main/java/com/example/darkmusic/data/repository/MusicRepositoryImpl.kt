@@ -1,5 +1,6 @@
 package com.example.darkmusic.data.repository
 
+import android.util.Log
 import com.example.darkmusic.data.local.dao.SongDao
 import com.example.darkmusic.data.mapper.toDomain
 import com.example.darkmusic.data.mapper.toEntity
@@ -11,6 +12,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.kiosk.KioskInfo
+import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import javax.inject.Inject
 
@@ -28,33 +31,63 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun getTrendingSongs(): List<Song> = withContext(Dispatchers.IO) {
         try {
-            val kiosk = youtube.kioskList.getExtractorById("Trending", null)
-            kiosk.fetchPage()
-            val items = kiosk.initialPage.items
-            mapInfoItems(items)
+            val kioskList = youtube.kioskList
+            val availableKiosks = kioskList.availableKiosks
+            Log.d("MusicRepository", "Available Kiosks: $availableKiosks")
+
+            // Intentamos buscar un kiosk de música, si no, el primero disponible, si no, "Trending"
+            // Algunos IDs comunes: "Music", "MUSIC", "Trending", "trending"
+            val kioskId = availableKiosks.firstOrNull { it.equals("Music", ignoreCase = true) }
+                ?: availableKiosks.firstOrNull { it.equals("Trending", ignoreCase = true) }
+                ?: availableKiosks.firstOrNull()
+                ?: "Trending"
+            
+            Log.d("MusicRepository", "Using Kiosk ID: $kioskId")
+
+            val kioskExtractor = kioskList.getExtractorById(kioskId, null)
+            val kioskInfo = KioskInfo.getInfo(kioskExtractor)
+            val songs = mapInfoItems(kioskInfo.relatedItems)
+            Log.d("MusicRepository", "Mapped ${songs.size} songs from kiosk")
+            songs
         } catch (e: Exception) {
-            e.printStackTrace()
-            emptyList()
+            Log.e("MusicRepository", "Error loading trending songs, falling back to search", e)
+            // Fallback: Si las tendencias fallan, buscamos "Top hits" para no dejar la pantalla vacía
+            searchSongs("Top hits")
         }
     }
 
     override suspend fun searchSongs(query: String): List<Song> = withContext(Dispatchers.IO) {
+
         try {
-            val search = youtube.getSearchExtractor(query)
-            search.fetchPage()
-            val items = search.initialPage.items
-            mapInfoItems(items)
+
+            Log.d("MusicRepository", "Searching: $query")
+
+            val extractor = youtube.getSearchExtractor(query)
+
+            extractor.fetchPage()
+
+            val page = extractor.initialPage
+
+            Log.d(
+                "MusicRepository",
+                "Initial page items: ${page.items.size}"
+            )
+
+            mapInfoItems(page.items)
+
         } catch (e: Exception) {
-            e.printStackTrace()
+
+            Log.e("MusicRepository", "Search error", e)
+
             emptyList()
         }
     }
 
     override suspend fun getStreamUrl(videoId: String): String? = withContext(Dispatchers.IO) {
         try {
-            val extractor = youtube.getStreamExtractor("https://www.youtube.com/watch?v=$videoId")
-            extractor.fetchPage()
-            val audioStream = extractor.audioStreams
+            val streamExtractor = youtube.getStreamExtractor(videoId)
+            val streamInfo = StreamInfo.getInfo(streamExtractor)
+            val audioStream = streamInfo.audioStreams
                 .filter { it.format?.name == "webm" || it.format?.name == "m4a" }
                 .maxByOrNull { it.bitrate }
             audioStream?.url
@@ -65,11 +98,15 @@ class MusicRepositoryImpl @Inject constructor(
     }
 
     private fun mapInfoItems(items: List<InfoItem>): List<Song> {
-        // YouTube puede devolver VideoInfoItem o StreamInfoItem.
-        // Ambos contienen la información que necesitamos.
+        Log.d("MusicRepository", "Received ${items.size} items to map")
+        // Log types for debugging
+        items.take(5).forEach { 
+            Log.d("MusicRepository", "Item type: ${it.javaClass.simpleName}, Name: ${it.name}")
+        }
+
         return items.filterIsInstance<StreamInfoItem>().map { item ->
             Song(
-                id = item.url.substringAfter("v=", item.url),
+                id = item.url,
                 title = item.name,
                 artist = item.uploaderName ?: "Desconocido",
                 album = null,
