@@ -1,40 +1,49 @@
 package com.example.darkmusic.ui
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.Radio
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import com.example.darkmusic.core.designsystem.AppleMusicRed
-import com.example.darkmusic.core.designsystem.CanvasBlack
-import com.example.darkmusic.core.designsystem.LabelSecondaryDark
+import androidx.navigation.compose.*
+import coil.compose.AsyncImage
+import com.example.darkmusic.core.designsystem.*
+import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.ui.home.HomeScreen
 import com.example.darkmusic.ui.navigation.Screen
+import com.example.darkmusic.ui.player.PlayerScreen
+import com.example.darkmusic.ui.player.PlayerViewModel
 import com.example.darkmusic.ui.search.SearchScreen
 
 /**
  * Contenedor principal de la aplicación que gestiona la navegación por pestañas (BottomBar).
  */
 @Composable
-fun MainScreen() {
+fun MainScreen(
+    playerViewModel: PlayerViewModel = hiltViewModel()
+) {
     val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    val currentSong by playerViewModel.currentSong.collectAsState()
+    val isPlaying by playerViewModel.isPlaying.collectAsState()
     
     // Definición de los elementos de navegación de la barra inferior
     val items = listOf(
@@ -47,59 +56,121 @@ fun MainScreen() {
 
     Scaffold(
         bottomBar = {
-            // Barra de navegación inferior con estilo translúcido (imitando blur de iOS)
-            NavigationBar(
-                containerColor = CanvasBlack.copy(alpha = 0.9f),
-                contentColor = Color.White,
-                tonalElevation = 0.dp
-            ) {
-                // Observamos la ruta actual para resaltar el icono seleccionado
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-                
-                items.forEach { item ->
-                    val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
-                    
-                    NavigationBarItem(
-                        icon = { Icon(item.icon, contentDescription = item.title) },
-                        label = { Text(item.title) },
-                        selected = selected,
-                        onClick = {
-                            // Navegación optimizada para no acumular la misma pantalla en el stack
-                            navController.navigate(item.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = AppleMusicRed,
-                            selectedTextColor = AppleMusicRed,
-                            unselectedIconColor = LabelSecondaryDark,
-                            unselectedTextColor = LabelSecondaryDark,
-                            indicatorColor = Color.Transparent // Quitamos el círculo de fondo de M3
+            if (currentRoute != Screen.Player.route) {
+                Column {
+                    // Mini Reproductor
+                    if (currentSong != null) {
+                        MiniPlayer(
+                            song = currentSong!!,
+                            isPlaying = isPlaying,
+                            onPlayPause = { playerViewModel.playPause() },
+                            onClick = { navController.navigate(Screen.Player.route) }
                         )
-                    )
+                    }
+
+                    // Barra de navegación inferior
+                    NavigationBar(
+                        containerColor = CanvasBlack.copy(alpha = 0.95f),
+                        contentColor = Color.White,
+                        tonalElevation = 0.dp
+                    ) {
+                        val currentDestination = navBackStackEntry?.destination
+                        
+                        items.forEach { item ->
+                            val selected = currentDestination?.hierarchy?.any { it.route == item.route } == true
+                            
+                            NavigationBarItem(
+                                icon = { Icon(item.icon, contentDescription = item.title) },
+                                label = { Text(item.title) },
+                                selected = selected,
+                                onClick = {
+                                    navController.navigate(item.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = AppleMusicRed,
+                                    selectedTextColor = AppleMusicRed,
+                                    unselectedIconColor = LabelSecondaryDark,
+                                    unselectedTextColor = LabelSecondaryDark,
+                                    indicatorColor = Color.Transparent
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }
     ) { innerPadding ->
-        // Host de navegación que define qué pantalla se muestra según la ruta
         NavHost(
             navController = navController,
             startDestination = Screen.Home.route,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(if (currentRoute == Screen.Player.route) PaddingValues(0.dp) else innerPadding)
         ) {
-            // Ruta "Escuchar": La pantalla que acabamos de mejorar
             composable(Screen.Home.route) { HomeScreen() }
-            
-            // Rutas temporales con placeholders
             composable(Screen.New.route) { PlaceholderScreen("Novedades") }
             composable(Screen.Radio.route) { PlaceholderScreen("Radio") }
             composable(Screen.Library.route) { PlaceholderScreen("Biblioteca") }
             composable(Screen.Search.route) { SearchScreen() }
+            composable(Screen.Player.route) { PlayerScreen() }
+        }
+    }
+}
+
+@Composable
+fun MiniPlayer(
+    song: Song,
+    isPlaying: Boolean,
+    onPlayPause: () -> Unit,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(64.dp)
+            .background(Surface1Dark)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = song.coverUrl,
+            contentDescription = null,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(4.dp)),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = song.title,
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = song.artist,
+                color = LabelSecondaryDark,
+                fontSize = 12.sp,
+                maxLines = 1
+            )
+        }
+        IconButton(onClick = onPlayPause) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = null,
+                tint = Color.White
+            )
+        }
+        IconButton(onClick = { /* Siguiente */ }) {
+            Icon(Icons.Default.SkipNext, contentDescription = null, tint = Color.White)
         }
     }
 }

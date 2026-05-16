@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.domain.repository.MusicRepository
+import com.example.darkmusic.playback.manager.MusicServiceConnection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -11,7 +12,8 @@ import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val repository: MusicRepository
+    private val repository: MusicRepository,
+    private val musicServiceConnection: MusicServiceConnection
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeState())
@@ -59,9 +61,8 @@ class HomeViewModel @Inject constructor(
 
     fun onSongClick(song: Song) {
         viewModelScope.launch {
-            val streamUrl = repository.getStreamUrl(song.id)
-            if (streamUrl != null) {
-                println("URL de Streaming lista: $streamUrl")
+            repository.getStreamUrl(song.id)?.let { url ->
+                musicServiceConnection.playSong(song, url)
             }
         }
     }

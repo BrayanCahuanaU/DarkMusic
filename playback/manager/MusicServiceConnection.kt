@@ -60,12 +60,7 @@ class MusicServiceConnection @Inject constructor(
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 _duration.value = player.duration.coerceAtLeast(0L)
-                // Actualizamos la canción actual si cambia por salto
-                mediaItem?.let {
-                    // Si tienes una forma de recuperar el objeto Song desde el mediaId o metadata
-                    // Por ahora, al menos reseteamos la posición
-                    _currentPosition.value = 0L
-                }
+                // Aquí podrías actualizar _currentSong si tienes un mapa de MediaItems a Songs
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -80,9 +75,7 @@ class MusicServiceConnection @Inject constructor(
         scope.launch {
             while (true) {
                 _player.value?.let {
-                    if (it.isPlaying) {
-                        _currentPosition.value = it.currentPosition
-                    }
+                    _currentPosition.value = it.currentPosition
                 }
                 delay(1000L)
             }
@@ -100,6 +93,7 @@ class MusicServiceConnection @Inject constructor(
 
             val mediaItem = MediaItem.Builder()
                 .setMediaId(song.id)
+                // Priorizamos el path local si ya está descargada
                 .setUri(song.localPath ?: streamUrl)
                 .setMediaMetadata(mediaMetadata)
                 .build()
@@ -121,19 +115,11 @@ class MusicServiceConnection @Inject constructor(
     }
 
     fun skipToNext() {
-        _player.value?.let {
-            if (it.hasNextMediaItem()) {
-                it.seekToNext()
-            }
-        }
+        _player.value?.seekToNext()
     }
 
     fun skipToPrevious() {
-        _player.value?.let {
-            if (it.hasPreviousMediaItem()) {
-                it.seekToPrevious()
-            }
-        }
+        _player.value?.seekToPrevious()
     }
 
     fun addSongsToQueue(songs: List<Song>, repository: com.example.darkmusic.domain.repository.MusicRepository) {

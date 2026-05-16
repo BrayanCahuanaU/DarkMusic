@@ -19,4 +19,5 @@ interface MusicRepository {
     suspend fun searchSongs(query: String): List<Song>
     suspend fun getTrendingSongs(): List<Song>
     suspend fun getStreamUrl(videoId: String): String?
+    suspend fun downloadSong(song: Song): Boolean
 }

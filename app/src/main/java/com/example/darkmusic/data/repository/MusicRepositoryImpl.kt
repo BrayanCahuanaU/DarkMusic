@@ -1,6 +1,7 @@
 package com.example.darkmusic.data.repository
 
 import android.util.Log
+import com.example.darkmusic.core.network.MusicDownloader
 import com.example.darkmusic.data.local.dao.SongDao
 import com.example.darkmusic.data.mapper.toDomain
 import com.example.darkmusic.data.mapper.toEntity
@@ -18,7 +19,8 @@ import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import javax.inject.Inject
 
 class MusicRepositoryImpl @Inject constructor(
-    private val songDao: SongDao
+    private val songDao: SongDao,
+    private val musicDownloader: MusicDownloader
 ) : MusicRepository {
 
     private val youtube = ServiceList.YouTube
@@ -85,15 +87,42 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun getStreamUrl(videoId: String): String? = withContext(Dispatchers.IO) {
         try {
-            val streamExtractor = youtube.getStreamExtractor(videoId)
+            // El videoId puede ser la URL completa, extraemos solo el ID si es necesario
+            val id = if (videoId.contains("v=")) videoId.substringAfter("v=") else videoId
+            val streamExtractor = youtube.getStreamExtractor(id)
             val streamInfo = StreamInfo.getInfo(streamExtractor)
             val audioStream = streamInfo.audioStreams
-                .filter { it.format?.name == "webm" || it.format?.name == "m4a" }
-                .maxByOrNull { it.bitrate }
+                .filter { stream ->
+                    stream.format?.name?.contains("webm", true) == true
+                }
+                .maxByOrNull { it.averageBitrate ?: it.bitrate }
+                ?: streamInfo.audioStreams.maxByOrNull {
+                    it.averageBitrate ?: it.bitrate
+                }
             audioStream?.url
         } catch (e: Exception) {
             e.printStackTrace()
             null
+        }
+    }
+
+    override suspend fun downloadSong(song: Song): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val streamUrl = getStreamUrl(song.id) ?: return@withContext false
+            val localPath = musicDownloader.downloadSong(song, streamUrl)
+            if (localPath != null) {
+                val updatedSong = song.copy(
+                    isDownloaded = true,
+                    localPath = localPath
+                )
+                insertSong(updatedSong)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 
@@ -105,13 +134,18 @@ class MusicRepositoryImpl @Inject constructor(
         }
 
         return items.filterIsInstance<StreamInfoItem>().map { item ->
+            // Buscamos la mejor calidad de miniatura disponible
+            val bestThumbnail = item.thumbnails
+                .maxByOrNull { it.width * it.height }
+                ?.url
+
             Song(
                 id = item.url,
                 title = item.name,
                 artist = item.uploaderName ?: "Desconocido",
                 album = null,
                 durationMs = item.duration * 1000L,
-                coverUrl = item.thumbnails.firstOrNull()?.url,
+                coverUrl = bestThumbnail,
                 mediaUrl = item.url
             )
         }
