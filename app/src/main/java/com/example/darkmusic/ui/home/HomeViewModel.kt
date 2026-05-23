@@ -61,8 +61,31 @@ class HomeViewModel @Inject constructor(
 
     fun onSongClick(song: Song) {
         viewModelScope.launch {
-            repository.getStreamUrl(song.id)?.let { url ->
-                musicServiceConnection.playSong(song, url)
+            if (song.isDownloaded && song.localPath != null) {
+                musicServiceConnection.playSong(song, song.localPath)
+            } else {
+                repository.getStreamUrl(song.id)?.let { url ->
+                    musicServiceConnection.playSong(song, url)
+                }
+            }
+        }
+    }
+
+    fun toggleFavorite(song: Song) {
+        viewModelScope.launch {
+            repository.insertSong(song.copy(isFavorite = !song.isFavorite))
+        }
+    }
+
+    fun downloadSong(song: Song) {
+        if (song.isDownloaded || _state.value.downloadingSongIds.contains(song.id)) return
+        
+        viewModelScope.launch {
+            _state.update { it.copy(downloadingSongIds = it.downloadingSongIds + song.id) }
+            try {
+                repository.downloadSong(song)
+            } finally {
+                _state.update { it.copy(downloadingSongIds = it.downloadingSongIds - song.id) }
             }
         }
     }

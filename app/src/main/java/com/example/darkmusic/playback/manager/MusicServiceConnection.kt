@@ -91,22 +91,38 @@ class MusicServiceConnection @Inject constructor(
 
     fun playSong(song: Song, streamUrl: String) {
         _currentSong.value = song
-        _player.value?.let { p ->
-            val mediaMetadata = MediaMetadata.Builder()
-                .setTitle(song.title)
-                .setArtist(song.artist)
-                .setArtworkUri(android.net.Uri.parse(song.coverUrl ?: ""))
-                .build()
+        
+        val uri = if (song.isDownloaded && song.localPath != null) {
+            android.net.Uri.fromFile(java.io.File(song.localPath)).toString()
+        } else {
+            streamUrl
+        }
 
-            val mediaItem = MediaItem.Builder()
-                .setMediaId(song.id)
-                .setUri(song.localPath ?: streamUrl)
-                .setMediaMetadata(mediaMetadata)
-                .build()
+        val mediaMetadata = MediaMetadata.Builder()
+            .setTitle(song.title)
+            .setArtist(song.artist)
+            .setArtworkUri(android.net.Uri.parse(song.coverUrl ?: ""))
+            .build()
 
-            p.setMediaItem(mediaItem)
-            p.prepare()
-            p.play()
+        val mediaItem = MediaItem.Builder()
+            .setMediaId(song.id)
+            .setUri(uri)
+            .setMediaMetadata(mediaMetadata)
+            .build()
+
+        val player = _player.value
+        if (player != null) {
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.play()
+        } else {
+            // Si el controlador aún no está listo, esperamos a que se inicialice
+            controllerFuture?.addListener({
+                val p = controllerFuture?.get()
+                p?.setMediaItem(mediaItem)
+                p?.prepare()
+                p?.play()
+            }, MoreExecutors.directExecutor())
         }
     }
 

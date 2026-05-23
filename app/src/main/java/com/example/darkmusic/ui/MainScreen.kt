@@ -26,6 +26,8 @@ import coil.compose.AsyncImage
 import com.example.darkmusic.core.designsystem.*
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.ui.home.HomeScreen
+import com.example.darkmusic.ui.library.LibraryScreen
+import com.example.darkmusic.ui.library.OfflineScreen
 import com.example.darkmusic.ui.navigation.Screen
 import com.example.darkmusic.ui.player.PlayerScreen
 import com.example.darkmusic.ui.player.PlayerViewModel
@@ -49,7 +51,6 @@ fun MainScreen(
     val items = listOf(
         NavigationItem("Escuchar", Screen.Home.route, Icons.Default.Home),
         NavigationItem("Novedades", Screen.New.route, Icons.Default.MusicNote),
-        NavigationItem("Radio", Screen.Radio.route, Icons.Default.Radio),
         NavigationItem("Biblioteca", Screen.Library.route, Icons.Default.LibraryMusic),
         NavigationItem("Buscar", Screen.Search.route, Icons.Default.Search)
     )
@@ -111,11 +112,25 @@ fun MainScreen(
             startDestination = Screen.Home.route,
             modifier = Modifier.padding(if (currentRoute == Screen.Player.route) PaddingValues(0.dp) else innerPadding)
         ) {
-            composable(Screen.Home.route) { HomeScreen() }
+            composable(Screen.Home.route) { 
+                HomeScreen(onSongClick = { navController.navigate(Screen.Player.route) }) 
+            }
             composable(Screen.New.route) { PlaceholderScreen("Novedades") }
-            composable(Screen.Radio.route) { PlaceholderScreen("Radio") }
-            composable(Screen.Library.route) { PlaceholderScreen("Biblioteca") }
-            composable(Screen.Search.route) { SearchScreen() }
+            composable(Screen.Library.route) { 
+                LibraryScreen(
+                    onOfflineClick = { navController.navigate(Screen.Offline.route) },
+                    onSongClick = { navController.navigate(Screen.Player.route) }
+                ) 
+            }
+            composable(Screen.Offline.route) {
+                OfflineScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onSongClick = { navController.navigate(Screen.Player.route) }
+                )
+            }
+            composable(Screen.Search.route) { 
+                SearchScreen(onSongClick = { navController.navigate(Screen.Player.route) }) 
+            }
             composable(Screen.Player.route) { PlayerScreen() }
         }
     }

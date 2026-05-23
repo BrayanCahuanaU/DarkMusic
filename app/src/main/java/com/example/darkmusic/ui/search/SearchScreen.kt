@@ -1,7 +1,6 @@
 package com.example.darkmusic.ui.search
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,19 +14,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
 import com.example.darkmusic.core.designsystem.CanvasBlack
 import com.example.darkmusic.core.designsystem.LabelSecondaryDark
 import com.example.darkmusic.core.designsystem.Surface1Dark
-import com.example.darkmusic.domain.model.Song
+import com.example.darkmusic.ui.components.SongItem
 
 @Composable
 fun SearchScreen(
+    onSongClick: () -> Unit,
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
@@ -65,9 +62,18 @@ fun SearchScreen(
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
                 items(state.searchResults) { song ->
-                    SearchSongRow(song) {
-                        viewModel.onSongClick(song)
-                    }
+                    SongItem(
+                        song = song,
+                        onClick = { 
+                            viewModel.onSongClick(song)
+                            onSongClick()
+                        },
+                        onFavoriteClick = { viewModel.toggleFavorite(song) },
+                        onDownloadClick = { viewModel.downloadSong(song) },
+                        onAddToPlaylist = { /* TODO */ },
+                        onAddToAlbum = { /* TODO */ },
+                        isDownloading = state.downloadingSongIds.contains(song.id)
+                    )
                 }
             }
         }
@@ -110,41 +116,4 @@ fun SearchBar(
             unfocusedTextColor = Color.White
         )
     )
-}
-
-@Composable
-fun SearchSongRow(song: Song, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AsyncImage(
-            model = song.coverUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(50.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            contentScale = ContentScale.Crop
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = Color.White
-            )
-            Text(
-                text = "Canción • ${song.artist}",
-                maxLines = 1,
-                style = MaterialTheme.typography.bodyMedium,
-                color = LabelSecondaryDark
-            )
-        }
-    }
 }

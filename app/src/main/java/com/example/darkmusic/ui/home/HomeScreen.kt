@@ -17,18 +17,19 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.darkmusic.domain.model.Song
+import com.example.darkmusic.ui.components.SongItem
 
 @Composable
 fun HomeScreen(
+    onSongClick: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
 
-    if (state.isLoading) {
+    if (state.isLoading && state.songs.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
@@ -44,7 +45,7 @@ fun HomeScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp) // Espacio para el mini-reproductor
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
             // Título Principal
             item {
@@ -65,7 +66,10 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         items(state.suggestedSongs) { song ->
-                            SuggestedSongCard(song) { viewModel.onSongClick(song) }
+                            SuggestedSongCard(song) { 
+                                viewModel.onSongClick(song)
+                                onSongClick()
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(24.dp))
@@ -78,25 +82,40 @@ fun HomeScreen(
                     SectionHeader("Escuchado recientemente")
                 }
                 items(state.recentSongs) { song ->
-                    SongListRow(song, isRecent = true) { viewModel.onSongClick(song) }
+                    SongItem(
+                        song = song,
+                        onClick = { 
+                            viewModel.onSongClick(song)
+                            onSongClick()
+                        },
+                        onFavoriteClick = { viewModel.toggleFavorite(song) },
+                        onDownloadClick = { viewModel.downloadSong(song) },
+                        onAddToPlaylist = { /* TODO */ },
+                        onAddToAlbum = { /* TODO */ },
+                        isDownloading = state.downloadingSongIds.contains(song.id)
+                    )
                 }
                 item { Spacer(modifier = Modifier.height(24.dp)) }
             }
 
-            // SECCIÓN 3: TOP MUNDIAL (Tendencias de NewPipe)
+            // SECCIÓN 3: TOP MUNDIAL
             item {
-                SectionHeader("Top Mundial (Tendencias)")
-            }
-
-            item {
-                Text(
-                    text = "Cantidad: ${state.songs.size}",
-                    modifier = Modifier.padding(horizontal = 20.dp)
-                )
+                SectionHeader("Top Mundial")
             }
 
             items(state.songs) { song ->
-                SongListRow(song, isRecent = false) { viewModel.onSongClick(song) }
+                SongItem(
+                    song = song,
+                    onClick = { 
+                        viewModel.onSongClick(song)
+                        onSongClick()
+                    },
+                    onFavoriteClick = { viewModel.toggleFavorite(song) },
+                    onDownloadClick = { viewModel.downloadSong(song) },
+                    onAddToPlaylist = { /* TODO */ },
+                    onAddToAlbum = { /* TODO */ },
+                    isDownloading = state.downloadingSongIds.contains(song.id)
+                )
             }
         }
     }
@@ -112,9 +131,6 @@ fun SectionHeader(title: String) {
     )
 }
 
-/**
- * Tarjeta cuadrada para sugerencias (Estilo Álbum de Apple Music).
- */
 @Composable
 fun SuggestedSongCard(song: Song, onClick: () -> Unit) {
     Column(
@@ -144,45 +160,5 @@ fun SuggestedSongCard(song: Song, onClick: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-    }
-}
-
-/**
- * Fila estándar para listas largas (Top Mundial y Recientes).
- */
-@Composable
-fun SongListRow(song: Song, isRecent: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AsyncImage(
-            model = song.coverUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .size(if (isRecent) 48.dp else 58.dp)
-                .clip(RoundedCornerShape(if (isRecent) 8.dp else 12.dp)),
-            contentScale = ContentScale.Crop
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = song.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = song.artist,
-                maxLines = 1,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Text(text = "•••", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
     }
 }

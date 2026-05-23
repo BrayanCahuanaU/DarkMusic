@@ -9,6 +9,7 @@ data class HomeState(
     val songs: List<Song> = emptyList(),          // Top Mundial (Tendencias)
     val recentSongs: List<Song> = emptyList(),    // Reproducciones recientes
     val suggestedSongs: List<Song> = emptyList(), // Sugerencias para el usuario
+    val downloadingSongIds: Set<String> = emptySet(), // Rastrear qué canciones se están descargando
     val isLoading: Boolean = false,
     val error: String? = null
 )

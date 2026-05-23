@@ -87,10 +87,19 @@ class MusicRepositoryImpl @Inject constructor(
 
     override suspend fun getStreamUrl(videoId: String): String? = withContext(Dispatchers.IO) {
         try {
-            // El videoId puede ser la URL completa, extraemos solo el ID si es necesario
-            val id = if (videoId.contains("v=")) videoId.substringAfter("v=") else videoId
-            val streamExtractor = youtube.getStreamExtractor(id)
+            // NewPipe espera una URL completa. Manejamos IDs, rutas relativas y URLs completas.
+            val url = when {
+                videoId.startsWith("http") -> videoId
+                videoId.startsWith("/") -> "https://www.youtube.com$videoId"
+                videoId.contains("watch?v=") -> "https://www.youtube.com/$videoId"
+                else -> "https://www.youtube.com/watch?v=$videoId"
+            }
+            
+            Log.d("MusicRepository", "Extrayendo stream de: $url")
+            val streamExtractor = youtube.getStreamExtractor(url)
+            streamExtractor.fetchPage() // Importante: Algunos extractores necesitan fetchPage
             val streamInfo = StreamInfo.getInfo(streamExtractor)
+            
             val audioStream = streamInfo.audioStreams
                 .filter { stream ->
                     stream.format?.name?.contains("webm", true) == true
@@ -99,9 +108,11 @@ class MusicRepositoryImpl @Inject constructor(
                 ?: streamInfo.audioStreams.maxByOrNull {
                     it.averageBitrate ?: it.bitrate
                 }
+            
+            Log.d("MusicRepository", "Stream URL obtenida: ${audioStream?.url != null}")
             audioStream?.url
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("MusicRepository", "Error obteniendo stream URL para $videoId", e)
             null
         }
     }
