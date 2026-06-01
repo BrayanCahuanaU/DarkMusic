@@ -2,9 +2,9 @@ package com.example.darkmusic.playback.manager
 
 import android.content.ComponentName
 import android.content.Context
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.Player
+import android.net.Uri
+import android.util.Log
+import androidx.media3.common.*
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.example.darkmusic.domain.model.Song
@@ -20,7 +20,8 @@ import javax.inject.Singleton
 
 @Singleton
 class MusicServiceConnection @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext context: Context,
+    private val repository: com.example.darkmusic.domain.repository.MusicRepository
 ) {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val _player = MutableStateFlow<Player?>(null)
@@ -38,15 +39,21 @@ class MusicServiceConnection @Inject constructor(
     private val _duration = MutableStateFlow(0L)
     val duration = _duration.asStateFlow()
 
+    private var currentQueue: List<Song> = emptyList()
+
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     init {
         val sessionToken = SessionToken(context, ComponentName(context, MusicService::class.java))
         controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
         controllerFuture?.addListener({
-            val controller = controllerFuture?.get()
-            _player.value = controller
-            setupPlayerListener(controller)
+            try {
+                val controller = controllerFuture?.get()
+                _player.value = controller
+                setupPlayerListener(controller)
+            } catch (e: Exception) {
+                Log.e("MusicServiceConnection", "Error initializing MediaController", e)
+            }
         }, MoreExecutors.directExecutor())
 
         updatePlaybackPosition()
@@ -59,13 +66,17 @@ class MusicServiceConnection @Inject constructor(
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                _duration.value = player.duration.coerceAtLeast(0L)
-                // Actualizamos la canción actual si cambia por salto
-                mediaItem?.let {
-                    // Si tienes una forma de recuperar el objeto Song desde el mediaId o metadata
-                    // Por ahora, al menos reseteamos la posición
-                    _currentPosition.value = 0L
+                mediaItem?.let { item ->
+                    val song = currentQueue.find { it.id == item.mediaId }
+                    _currentSong.value = song
+                    
+                    // Si el item no tiene URI (porque es el siguiente en la cola), se la buscamos ahora
+                    if (item.localConfiguration?.uri == null && song != null) {
+                        fetchAndSetUri(song, player)
+                    }
                 }
+                _duration.value = player.duration.coerceAtLeast(0L)
+                _currentPosition.value = 0L
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -73,7 +84,42 @@ class MusicServiceConnection @Inject constructor(
                     _duration.value = player.duration.coerceAtLeast(0L)
                 }
             }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e("MusicServiceConnection", "Player Error: ${error.errorCodeName} (${error.errorCode})", error)
+            }
         })
+    }
+
+        private fun fetchAndSetUri(song: Song, player: Player) {
+        scope.launch {
+            val streamUrl = if (song.isDownloaded && song.localPath != null) {
+                val file = java.io.File(song.localPath)
+                if (file.exists()) {
+                    android.net.Uri.fromFile(file).toString()
+                } else {
+                    null
+                }
+            } else {
+                repository.getStreamUrl(extractVideoId(song.id))
+            }
+
+            streamUrl?.let { uri ->
+                // Encontrar el índice del elemento de medios con el ID de la canción coincidente
+                val index = (0 until player.mediaItemCount).firstOrNull { i ->
+                    player.getMediaItemAt(i).mediaId == song.id
+                }
+
+                index?.let { mediaIndex ->
+                    val currentItem = player.getMediaItemAt(mediaIndex)
+                    val updatedItem = currentItem.buildUpon()
+                        .setUri(android.net.Uri.parse(uri))
+                        .build()
+
+                    player.replaceMediaItem(mediaIndex, updatedItem)
+                }
+            }
+        }
     }
 
     private fun updatePlaybackPosition() {
@@ -89,40 +135,66 @@ class MusicServiceConnection @Inject constructor(
         }
     }
 
-    fun playSong(song: Song, streamUrl: String) {
-        _currentSong.value = song
-        
-        val uri = if (song.isDownloaded && song.localPath != null) {
-            android.net.Uri.fromFile(java.io.File(song.localPath)).toString()
-        } else {
-            streamUrl
-        }
+    /**
+     * Reproduce una canción y configura la lista completa como cola.
+     */
+    fun playSong(selectedSong: Song, songs: List<Song>) {
+        scope.launch {
+            currentQueue = songs
+            _currentSong.value = selectedSong
 
-        val mediaMetadata = MediaMetadata.Builder()
-            .setTitle(song.title)
-            .setArtist(song.artist)
-            .setArtworkUri(android.net.Uri.parse(song.coverUrl ?: ""))
-            .build()
+            val player = _player.value
+            if (player == null) {
+                Log.e("MusicServiceConnection", "Player is null")
+                currentQueue = emptyList()
+                _currentSong.value = null
+                return@launch
+            }
 
-        val mediaItem = MediaItem.Builder()
-            .setMediaId(song.id)
-            .setUri(uri)
-            .setMediaMetadata(mediaMetadata)
-            .build()
+            // Obtener la URL de stream para la canción seleccionada primero
+            val selectedSongStreamUrl = if (selectedSong.isDownloaded && selectedSong.localPath != null) {
+                android.net.Uri.fromFile(java.io.File(selectedSong.localPath)).toString()
+            } else {
+                repository.getStreamUrl(extractVideoId(selectedSong.id))
+            }
 
-        val player = _player.value
-        if (player != null) {
-            player.setMediaItem(mediaItem)
+            if (selectedSongStreamUrl == null) {
+                Log.e("MusicServiceConnection", "Could not get stream URL for selected song: ${selectedSong.id}")
+                currentQueue = emptyList()
+                _currentSong.value = null
+                return@launch
+            }
+
+            // Crear los elementos de medios
+            val mediaItems = songs.map { song ->
+                val mediaMetadataBuilder = MediaMetadata.Builder()
+                    .setTitle(song.title)
+                    .setArtist(song.artist)
+
+                // Establecer la URI de portada solo si está disponible y no está vacía
+                song.coverUrl?.takeIf { it.isNotEmpty() }?.let { coverUri ->
+                    mediaMetadataBuilder.setArtworkUri(android.net.Uri.parse(coverUri))
+                }
+
+                val mediaMetadata = mediaMetadataBuilder.build()
+
+                val mediaItemBuilder = MediaItem.Builder()
+                    .setMediaId(song.id)
+                    .setMediaMetadata(mediaMetadata)
+
+                // Establecer la URI de medios solo para la canción seleccionada
+                if (song.id == selectedSong.id) {
+                    mediaItemBuilder.setUri(selectedSongStreamUrl)
+                }
+
+                mediaItemBuilder.build()
+            }
+
+            // Encontrar el índice de la canción seleccionada
+            val index = songs.indexOfFirst { it.id == selectedSong.id }.coerceAtLeast(0)
+            player.setMediaItems(mediaItems, index, 0L)
             player.prepare()
             player.play()
-        } else {
-            // Si el controlador aún no está listo, esperamos a que se inicialice
-            controllerFuture?.addListener({
-                val p = controllerFuture?.get()
-                p?.setMediaItem(mediaItem)
-                p?.prepare()
-                p?.play()
-            }, MoreExecutors.directExecutor())
         }
     }
 
@@ -137,41 +209,11 @@ class MusicServiceConnection @Inject constructor(
     }
 
     fun skipToNext() {
-        _player.value?.let {
-            if (it.hasNextMediaItem()) {
-                it.seekToNext()
-            }
-        }
+        _player.value?.seekToNext()
     }
 
     fun skipToPrevious() {
-        _player.value?.let {
-            if (it.hasPreviousMediaItem()) {
-                it.seekToPrevious()
-            }
-        }
-    }
-
-    fun addSongsToQueue(songs: List<Song>, repository: com.example.darkmusic.domain.repository.MusicRepository) {
-        scope.launch {
-            songs.forEach { song ->
-                val url = song.localPath ?: repository.getStreamUrl(song.id)
-                if (url != null) {
-                    val mediaMetadata = MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.artist)
-                        .setArtworkUri(android.net.Uri.parse(song.coverUrl ?: ""))
-                        .build()
-
-                    val mediaItem = MediaItem.Builder()
-                        .setMediaId(song.id)
-                        .setUri(url)
-                        .setMediaMetadata(mediaMetadata)
-                        .build()
-                    _player.value?.addMediaItem(mediaItem)
-                }
-            }
-        }
+        _player.value?.seekToPrevious()
     }
 
     fun release() {
@@ -180,4 +222,9 @@ class MusicServiceConnection @Inject constructor(
             MediaController.releaseFuture(it)
         }
     }
+
+    private fun extractVideoId(url: String): String {
+        return Uri.parse(url).getQueryParameter("v") ?: url
+    }
+
 }

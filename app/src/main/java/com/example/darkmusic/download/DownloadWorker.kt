@@ -44,7 +44,7 @@ class DownloadWorker @AssistedInject constructor(
             outputStream.close()
 
             // 4. Actualizamos la base de datos para marcar como descargado
-            val song = repository.getSongById(songId)
+            val song = repository.getSongById(songId) ?: repository.getFullSongInfo(songId)
             song?.let {
                 repository.insertSong(it.copy(isDownloaded = true, localPath = file.absolutePath))
             }

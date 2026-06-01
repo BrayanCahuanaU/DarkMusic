@@ -9,6 +9,7 @@ data class SongEntity(
     val title: String,
     val artist: String,
     val album: String?,
+    val genre: String?,
     val durationMs: Long,
     val coverUrl: String?,
     val mediaUrl: String,

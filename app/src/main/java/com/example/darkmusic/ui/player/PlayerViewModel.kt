@@ -52,23 +52,9 @@ class PlayerViewModel @Inject constructor(
 
     fun playSong(song: Song) {
         viewModelScope.launch {
-            val streamUrl = song.localPath ?: repository.getStreamUrl(song.id)
-            if (streamUrl != null) {
-                musicServiceConnection.playSong(song, streamUrl)
-                // Lógica de auto-cola: Si no hay más canciones, añadimos 2 similares
-                ensureQueueIsNotEmpty(song)
-            }
-        }
-    }
-
-    private fun ensureQueueIsNotEmpty(song: Song) {
-        viewModelScope.launch {
-            val player = musicServiceConnection.player.value
-            if (player != null && player.mediaItemCount <= 1) {
-                // Buscamos canciones del mismo artista para la cola
-                val similarSongs = repository.searchSongs(song.artist).take(2)
-                musicServiceConnection.addSongsToQueue(similarSongs, repository)
-            }
+            // Intentamos reproducir la canción con una cola de sugerencias basadas en el artista
+            val similarSongs = repository.searchSongs(song.artist).take(10)
+            musicServiceConnection.playSong(song, similarSongs)
         }
     }
 }

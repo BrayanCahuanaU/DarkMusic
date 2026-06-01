@@ -15,7 +15,7 @@ class DarkMusicApp : Application() {
         // Inicialización con localización explícita para evitar problemas con tendencias
         NewPipe.init(
             NewPipeDownloader(OkHttpClient()),
-            Localization("US", "en")
+            Localization("PE", "es"),
         )
     }
 }

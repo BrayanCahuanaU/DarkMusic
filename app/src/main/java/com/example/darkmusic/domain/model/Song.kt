@@ -9,6 +9,7 @@ data class Song(
     val title: String,           // Nombre de la canción
     val artist: String,          // Nombre del artista o canal
     val album: String?,          // Nombre del álbum (opcional)
+    val genre: String?,          // Género musical
     val durationMs: Long,        // Duración en milisegundos
     val coverUrl: String?,       // URL de la imagen de portada
     val mediaUrl: String,        // URL o path del archivo de audio

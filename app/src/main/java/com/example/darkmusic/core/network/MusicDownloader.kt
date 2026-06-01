@@ -1,6 +1,7 @@
 package com.example.darkmusic.core.network
 
 import android.content.Context
+import android.util.Log
 import com.example.darkmusic.domain.model.Song
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.OkHttpClient
@@ -19,20 +20,30 @@ class MusicDownloader @Inject constructor(
 ) {
     suspend fun downloadSong(song: Song, url: String): String? = withContext(Dispatchers.IO) {
         try {
-            val request = Request.Builder().url(url).build()
+            Log.d("MusicDownloader", "Iniciando descarga de: ${song.title} desde $url")
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+                .build()
+                
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
+                if (!response.isSuccessful) {
+                    Log.e("MusicDownloader", "Fallo en descarga: Código ${response.code}")
+                    return@withContext null
+                }
                 
                 val musicDir = File(context.getExternalFilesDir(null), "music")
                 if (!musicDir.exists()) musicDir.mkdirs()
                 
-                // Usamos el formato: "[Artista] Album - Titulo.m4a"
+                // Sanitizar nombre de archivo
                 val safeArtist = song.artist.replace(Regex("[\\\\/:*?\"<>|]"), "_")
-                val safeAlbum = (song.album ?: "Música local").replace(Regex("[\\\\/:*?\"<>|]"), "_")
                 val safeTitle = song.title.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+                val extension = if (url.contains("webm")) ".webm" else ".m4a"
                 
-                val fileName = "[$safeArtist] $safeAlbum - $safeTitle.m4a"
+                val fileName = "[$safeArtist] - $safeTitle$extension"
                 val file = File(musicDir, fileName)
+                
+                Log.d("MusicDownloader", "Guardando en: ${file.absolutePath}")
                 
                 val inputStream = response.body?.byteStream() ?: return@withContext null
                 val outputStream = FileOutputStream(file)
@@ -43,10 +54,11 @@ class MusicDownloader @Inject constructor(
                     }
                 }
                 
+                Log.d("MusicDownloader", "Descarga completada: ${file.length()} bytes")
                 file.absolutePath
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("MusicDownloader", "Error durante la descarga", e)
             null
         }
     }

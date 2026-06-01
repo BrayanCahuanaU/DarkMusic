@@ -92,13 +92,7 @@ class LibraryViewModel @Inject constructor(
 
     fun onSongClick(song: Song) {
         viewModelScope.launch {
-            if (song.isDownloaded && song.localPath != null) {
-                musicServiceConnection.playSong(song, song.localPath)
-            } else {
-                repository.getStreamUrl(song.id)?.let { url ->
-                    musicServiceConnection.playSong(song, url)
-                }
-            }
+            musicServiceConnection.playSong(song, _state.value.allSongs)
         }
     }
 

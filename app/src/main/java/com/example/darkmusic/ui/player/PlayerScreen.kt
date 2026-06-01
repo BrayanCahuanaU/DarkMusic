@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -159,7 +160,7 @@ fun PlayerScreen(
                 )
             }
             IconButton(onClick = { /* Agregar al album */ }) {
-                Icon(Icons.Default.PlaylistAdd, contentDescription = "Agregar a lista", tint = LabelSecondaryDark)
+                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Agregar a lista", tint = LabelSecondaryDark)
             }
             IconButton(onClick = { /* Más opciones */ }) {
                 Icon(Icons.Default.MoreHoriz, contentDescription = "Más", tint = LabelSecondaryDark)

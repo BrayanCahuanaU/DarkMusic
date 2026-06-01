@@ -29,7 +29,7 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsState()
 
-    if (state.isLoading && state.songs.isEmpty()) {
+    if (state.isLoading && state.trendingSongs.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
@@ -57,15 +57,15 @@ fun HomeScreen(
                 )
             }
 
-            // SECCIÓN 1: SUGERENCIAS (Scroll Horizontal)
-            if (state.suggestedSongs.isNotEmpty()) {
+            // SECCIÓN 1: RECOMENDACIONES POR FAVORITOS (Scroll Horizontal)
+            if (state.favoriteGenresRecommendations.isNotEmpty()) {
                 item {
-                    SectionHeader("Sugerencias para ti")
+                    SectionHeader("Porque te gusta")
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        items(state.suggestedSongs) { song ->
+                        items(state.favoriteGenresRecommendations) { song ->
                             SuggestedSongCard(song) { 
                                 viewModel.onSongClick(song)
                                 onSongClick()
@@ -76,7 +76,26 @@ fun HomeScreen(
                 }
             }
 
-            // SECCIÓN 2: RECIENTES
+            // SECCIÓN 2: RECOMENDACIONES POR DESCARGAS
+            if (state.downloadedGenresRecommendations.isNotEmpty()) {
+                item {
+                    SectionHeader("Inspirado en tus descargas")
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        items(state.downloadedGenresRecommendations) { song ->
+                            SuggestedSongCard(song) { 
+                                viewModel.onSongClick(song)
+                                onSongClick()
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+
+            // SECCIÓN 3: RECIENTES
             if (state.recentSongs.isNotEmpty()) {
                 item {
                     SectionHeader("Escuchado recientemente")
@@ -98,24 +117,26 @@ fun HomeScreen(
                 item { Spacer(modifier = Modifier.height(24.dp)) }
             }
 
-            // SECCIÓN 3: TOP MUNDIAL
-            item {
-                SectionHeader("Top Mundial")
-            }
+            // SECCIÓN 4: TOP MUNDIAL
+            if (state.trendingSongs.isNotEmpty()) {
+                item {
+                    SectionHeader("Top Mundial")
+                }
 
-            items(state.songs) { song ->
-                SongItem(
-                    song = song,
-                    onClick = { 
-                        viewModel.onSongClick(song)
-                        onSongClick()
-                    },
-                    onFavoriteClick = { viewModel.toggleFavorite(song) },
-                    onDownloadClick = { viewModel.downloadSong(song) },
-                    onAddToPlaylist = { /* TODO */ },
-                    onAddToAlbum = { /* TODO */ },
-                    isDownloading = state.downloadingSongIds.contains(song.id)
-                )
+                items(state.trendingSongs) { song ->
+                    SongItem(
+                        song = song,
+                        onClick = { 
+                            viewModel.onSongClick(song)
+                            onSongClick()
+                        },
+                        onFavoriteClick = { viewModel.toggleFavorite(song) },
+                        onDownloadClick = { viewModel.downloadSong(song) },
+                        onAddToPlaylist = { /* TODO */ },
+                        onAddToAlbum = { /* TODO */ },
+                        isDownloading = state.downloadingSongIds.contains(song.id)
+                    )
+                }
             }
         }
     }
