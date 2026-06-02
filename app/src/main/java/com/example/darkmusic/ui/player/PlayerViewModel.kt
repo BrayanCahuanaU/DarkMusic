@@ -21,6 +21,24 @@ class PlayerViewModel @Inject constructor(
     val currentPosition = musicServiceConnection.currentPosition
     val duration = musicServiceConnection.duration
 
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading = _isLoading.asStateFlow()
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            musicServiceConnection.error.collect { err ->
+                if (err != null) _error.value = err
+            }
+        }
+    }
+
+    fun clearError() {
+        _error.value = null
+    }
+
     fun playPause() {
         musicServiceConnection.playPause()
     }
@@ -52,9 +70,19 @@ class PlayerViewModel @Inject constructor(
 
     fun playSong(song: Song) {
         viewModelScope.launch {
-            // Intentamos reproducir la canción con una cola de sugerencias basadas en el artista
-            val similarSongs = repository.searchSongs(song.artist).take(10)
-            musicServiceConnection.playSong(song, similarSongs)
+            _isLoading.value = true
+            _error.value = null
+            try {
+                musicServiceConnection.playSong(song, listOf(song))
+                launch {
+                    val similarSongs = repository.searchSongs(song.artist).take(10)
+                    if (similarSongs.size > 1) {
+                        musicServiceConnection.updateQueue(song, similarSongs)
+                    }
+                }
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 }

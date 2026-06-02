@@ -43,6 +43,9 @@ class MusicServiceConnection @Inject constructor(
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
+
     init {
         val sessionToken = SessionToken(context, ComponentName(context, MusicService::class.java))
         controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
@@ -160,6 +163,7 @@ class MusicServiceConnection @Inject constructor(
 
             if (selectedSongStreamUrl == null) {
                 Log.e("MusicServiceConnection", "Could not get stream URL for selected song: ${selectedSong.id}")
+                _error.value = "No se pudo obtener el stream para: ${selectedSong.title}"
                 currentQueue = emptyList()
                 _currentSong.value = null
                 return@launch
@@ -225,6 +229,41 @@ class MusicServiceConnection @Inject constructor(
 
     private fun extractVideoId(url: String): String {
         return Uri.parse(url).getQueryParameter("v") ?: url
+    }
+
+    fun updateQueue(currentSong: Song, newQueue: List<Song>) {
+        val player = _player.value ?: return
+        if (player.currentMediaItem?.mediaId == currentSong.id) {
+            currentQueue = newQueue
+            // No interrumpir el item actual, solo agregar los demás
+            val currentIndex = newQueue.indexOfFirst { it.id == currentSong.id }
+            if (currentIndex < 0) return
+            scope.launch {
+                val items = newQueue.mapIndexed { i, song ->
+                    MediaItem.Builder()
+                        .setMediaId(song.id)
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(song.title)
+                                .setArtist(song.artist)
+                                .apply {
+                                    song.coverUrl?.takeIf { it.isNotEmpty() }
+                                        ?.let { setArtworkUri(android.net.Uri.parse(it)) }
+                                }
+                                .build()
+                        )
+                        .build()
+                }
+                // Reemplazar todos excepto el actual que ya está reproduciéndose
+                val playerCurrentIndex = (0 until player.mediaItemCount)
+                    .firstOrNull { player.getMediaItemAt(it).mediaId == currentSong.id }
+                    ?: return@launch
+                // Agregar siguientes
+                if (playerCurrentIndex + 1 < items.size) {
+                    player.addMediaItems(playerCurrentIndex + 1, items.drop(currentIndex + 1))
+                }
+            }
+        }
     }
 
 }

@@ -31,139 +31,180 @@ fun PlayerScreen(
     val isPlaying by viewModel.isPlaying.collectAsState()
     val currentPosition by viewModel.currentPosition.collectAsState()
     val duration by viewModel.duration.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(CanvasBlack)
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.height(60.dp))
-
-        // Portada Grande (Mejor calidad ya manejada en el repositorio)
-        AsyncImage(
-            model = currentSong?.coverUrl,
-            contentDescription = null,
-            modifier = Modifier
-                .aspectRatio(1f)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp)),
-            contentScale = ContentScale.Crop
-        )
-
-        Spacer(modifier = Modifier.height(40.dp))
-
-        // Título y Artista
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = currentSong?.title ?: "No se está reproduciendo nada",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = currentSong?.artist ?: "-",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = LabelSecondaryDark,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            IconButton(onClick = { currentSong?.let { viewModel.toggleFavorite(it) } }) {
-                Icon(
-                    imageVector = if (currentSong?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = null,
-                    tint = if (currentSong?.isFavorite == true) AppleMusicRed else LabelSecondaryDark
-                )
-            }
+    LaunchedEffect(error) {
+        error?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.clearError()
         }
+    }
 
-        Spacer(modifier = Modifier.height(24.dp))
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = CanvasBlack
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(60.dp))
 
-        // Barra de Tiempo Minimalista
-        Column {
-            Slider(
-                value = currentPosition.toFloat(),
-                onValueChange = { viewModel.seekTo(it) },
-                valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color.White,
-                    inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                ),
+            AsyncImage(
+                model = currentSong?.coverUrl,
+                contentDescription = null,
                 modifier = Modifier
+                    .aspectRatio(1f)
                     .fillMaxWidth()
-                    .height(4.dp)
+                    .clip(RoundedCornerShape(12.dp)),
+                contentScale = ContentScale.Crop
             )
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = currentSong?.title ?: "No se está reproduciendo nada",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = currentSong?.artist ?: "-",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = LabelSecondaryDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(onClick = { currentSong?.let { viewModel.toggleFavorite(it) } }) {
+                    Icon(
+                        imageVector = if (currentSong?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = null,
+                        tint = if (currentSong?.isFavorite == true) AppleMusicRed else LabelSecondaryDark
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Column {
+                Slider(
+                    value = currentPosition.toFloat(),
+                    onValueChange = { viewModel.seekTo(it) },
+                    valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.White,
+                        activeTrackColor = Color.White,
+                        inactiveTrackColor = Color.White.copy(alpha = 0.2f)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(4.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(text = formatTime(currentPosition), color = LabelSecondaryDark, fontSize = 12.sp)
+                    Text(text = formatTime(duration), color = LabelSecondaryDark, fontSize = 12.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(40.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = { viewModel.skipPrevious() },
+                    enabled = !isLoading,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.SkipPrevious,
+                        contentDescription = "Anterior",
+                        tint = if (isLoading) LabelSecondaryDark else Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
+                Surface(
+                    onClick = { if (!isLoading) viewModel.playPause() },
+                    shape = RoundedCornerShape(50),
+                    color = Color.Transparent
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(72.dp)
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(48.dp),
+                                strokeWidth = 3.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = "Play/Pause",
+                                tint = Color.White,
+                                modifier = Modifier.size(72.dp)
+                            )
+                        }
+                    }
+                }
+
+                IconButton(
+                    onClick = { viewModel.skipNext() },
+                    enabled = !isLoading,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(
+                        Icons.Default.SkipNext,
+                        contentDescription = "Siguiente",
+                        tint = if (isLoading) LabelSecondaryDark else Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(bottom = 40.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Text(text = formatTime(currentPosition), color = LabelSecondaryDark, fontSize = 12.sp)
-                Text(text = formatTime(duration), color = LabelSecondaryDark, fontSize = 12.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(40.dp))
-
-        // Controles de Reproducción Corregidos
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = { viewModel.skipPrevious() }, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Anterior", tint = Color.White, modifier = Modifier.size(36.dp))
-            }
-            
-            Surface(
-                onClick = { viewModel.playPause() },
-                shape = RoundedCornerShape(50),
-                color = Color.Transparent
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = "Play/Pause",
-                    tint = Color.White,
-                    modifier = Modifier.size(72.dp)
-                )
-            }
-
-            IconButton(onClick = { viewModel.skipNext() }, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Siguiente", tint = Color.White, modifier = Modifier.size(36.dp))
-            }
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Botones Inferiores actualizados con Descarga
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 40.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            IconButton(onClick = { currentSong?.let { viewModel.downloadSong(it) } }) {
-                Icon(
-                    imageVector = if (currentSong?.isDownloaded == true) Icons.Default.DownloadDone else Icons.Default.Download,
-                    contentDescription = "Descargar",
-                    tint = if (currentSong?.isDownloaded == true) SystemBlue else LabelSecondaryDark
-                )
-            }
-            IconButton(onClick = { /* Agregar al album */ }) {
-                Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Agregar a lista", tint = LabelSecondaryDark)
-            }
-            IconButton(onClick = { /* Más opciones */ }) {
-                Icon(Icons.Default.MoreHoriz, contentDescription = "Más", tint = LabelSecondaryDark)
+                IconButton(onClick = { currentSong?.let { viewModel.downloadSong(it) } }) {
+                    Icon(
+                        imageVector = if (currentSong?.isDownloaded == true) Icons.Default.DownloadDone else Icons.Default.Download,
+                        contentDescription = "Descargar",
+                        tint = if (currentSong?.isDownloaded == true) SystemBlue else LabelSecondaryDark
+                    )
+                }
+                IconButton(onClick = { /* Agregar al album */ }) {
+                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Agregar a lista", tint = LabelSecondaryDark)
+                }
+                IconButton(onClick = { /* Más opciones */ }) {
+                    Icon(Icons.Default.MoreHoriz, contentDescription = "Más", tint = LabelSecondaryDark)
+                }
             }
         }
     }

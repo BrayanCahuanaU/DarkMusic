@@ -30,8 +30,8 @@ class MusicRepositoryImpl @Inject constructor(
     private val youtube = ServiceList.YouTube
 
     private val innerTubeClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
         .build()
 
     private val pipedInstances = listOf(
@@ -52,7 +52,8 @@ class MusicRepositoryImpl @Inject constructor(
 
         // Intento 1: NewPipe
         val newPipeResult = runCatching {
-            val extractor = youtube.getStreamExtractor(url)
+            val linkHandler = youtube.streamLHFactory.fromUrl(url)
+            val extractor = youtube.getStreamExtractor(linkHandler)
             extractor.fetchPage()
             val info = StreamInfo.getInfo(extractor)
 
@@ -93,22 +94,22 @@ class MusicRepositoryImpl @Inject constructor(
     private fun getStreamUrlViaInnerTube(videoId: String): String? {
         return tryInnerTubeClient(
             videoId,
-            clientName = "ANDROID_TESTSUITE",
-            clientVersion = "1.9",
-            clientNameInt = "30",
-            userAgent = "com.google.android.youtube/17.36.4 (Linux; U; Android 12) gzip"
+            clientName = "IOS",
+            clientVersion = "19.29.1",
+            clientNameInt = "5",
+            userAgent = "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)"
+        ) ?: tryInnerTubeClient(
+            videoId,
+            clientName = "ANDROID",
+            clientVersion = "19.30.37",
+            clientNameInt = "3",
+            userAgent = "com.google.android.youtube/19.30.37 (Linux; U; Android 11) gzip"
         ) ?: tryInnerTubeClient(
             videoId,
             clientName = "WEB",
             clientVersion = "2.20240726.00.00",
             clientNameInt = "1",
             userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        ) ?: tryInnerTubeClient(
-            videoId,
-            clientName = "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-            clientVersion = "2.0",
-            clientNameInt = "85",
-            userAgent = "Mozilla/5.0 (SMART-TV; LINUX; Tizen 6.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/6.0 TV Safari/538.1"
         )
     }
 
@@ -120,17 +121,24 @@ class MusicRepositoryImpl @Inject constructor(
         userAgent: String
     ): String? {
         return try {
-            val body = "{" +
-                    "\"context\":{" +
-                    "\"client\":{" +
-                    "\"clientName\":\"$clientName\"," +
-                    "\"clientVersion\":\"$clientVersion\"," +
-                    "\"hl\":\"es\"," +
-                    "\"gl\":\"PE\"" +
-                    "}" +
-                    "}," +
-                    "\"videoId\":\"$videoId\"" +
-                    "}"
+            val body = buildString {
+                append("{\"context\":{\"client\":{")
+                append("\"clientName\":\"$clientName\",")
+                append("\"clientVersion\":\"$clientVersion\",")
+                append("\"hl\":\"es\",\"gl\":\"US\"")
+                if (clientName == "ANDROID") {
+                    append(",\"androidSdkVersion\":30")
+                    append(",\"osName\":\"Android\"")
+                    append(",\"osVersion\":\"11\"")
+                }
+                if (clientName == "IOS") {
+                    append(",\"deviceModel\":\"iPhone16,2\"")
+                    append(",\"osName\":\"iPhone\"")
+                    append(",\"osVersion\":\"17.5.1.21F90\"")
+                    append(",\"userInterfaceTheme\":\"USER_INTERFACE_THEME_DARK\"")
+                }
+                append("}},\"videoId\":\"$videoId\",\"params\":\"CgIQBg==\"}")
+            }
 
             val request = Request.Builder()
                 .url("https://www.youtube.com/youtubei/v1/player?prettyPrint=false")
@@ -279,7 +287,8 @@ class MusicRepositoryImpl @Inject constructor(
     override suspend fun getFullSongInfo(songId: String) = withContext(Dispatchers.IO) {
         try {
             val url = normalizeToYouTubeUrl(songId)
-            val extractor = youtube.getStreamExtractor(url)
+            val linkHandler = youtube.streamLHFactory.fromUrl(url)
+            val extractor = youtube.getStreamExtractor(linkHandler)
             extractor.fetchPage()
             val info = StreamInfo.getInfo(extractor)
             Song(
