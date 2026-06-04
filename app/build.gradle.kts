@@ -29,7 +29,8 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
+                "proguard-newpipe.pro"
             )
         }
     }
@@ -101,7 +102,7 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+
 
     implementation("org.json:json:20231013")
 }

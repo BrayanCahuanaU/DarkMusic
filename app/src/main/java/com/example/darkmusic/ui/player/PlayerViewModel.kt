@@ -73,13 +73,11 @@ class PlayerViewModel @Inject constructor(
             _isLoading.value = true
             _error.value = null
             try {
-                musicServiceConnection.playSong(song, listOf(song))
-                launch {
-                    val similarSongs = repository.searchSongs(song.artist).take(10)
-                    if (similarSongs.size > 1) {
-                        musicServiceConnection.updateQueue(song, similarSongs)
-                    }
-                }
+                val similarSongs = repository.searchSongs(song.artist).take(10)
+                val songList = if (similarSongs.isEmpty()) listOf(song) else listOf(song) + similarSongs
+                musicServiceConnection.playSong(song, songList)
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Error al reproducir la canción"
             } finally {
                 _isLoading.value = false
             }

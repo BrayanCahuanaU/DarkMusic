@@ -14,8 +14,9 @@ import javax.inject.Singleton
 
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.example.darkmusic.core.network.RetryableHttpDataSource
+import com.example.darkmusic.domain.repository.MusicRepository
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -35,14 +36,13 @@ object PlaybackModule {
     @Singleton
     fun providePlayer(
         @ApplicationContext context: Context,
-        audioAttributes: AudioAttributes
+        audioAttributes: AudioAttributes,
+        repository: MusicRepository
     ): Player {
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
-            .setAllowCrossProtocolRedirects(true)
+        val httpDataSourceFactory = RetryableHttpDataSource.Factory(context, repository)
 
-        val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(httpDataSourceFactory)
+        val mediaSourceFactory =
+            DefaultMediaSourceFactory(httpDataSourceFactory)
 
         return ExoPlayer.Builder(context)
             .setAudioAttributes(audioAttributes, true)

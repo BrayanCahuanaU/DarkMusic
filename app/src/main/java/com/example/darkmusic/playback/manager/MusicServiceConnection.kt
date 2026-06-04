@@ -154,11 +154,21 @@ class MusicServiceConnection @Inject constructor(
                 return@launch
             }
 
-            // Obtener la URL de stream para la canción seleccionada primero
+            // Obtener la URL de stream para la canción seleccionada justo antes de reproducir
             val selectedSongStreamUrl = if (selectedSong.isDownloaded && selectedSong.localPath != null) {
-                android.net.Uri.fromFile(java.io.File(selectedSong.localPath)).toString()
+                val file = java.io.File(selectedSong.localPath)
+                if (file.exists()) {
+                    android.net.Uri.fromFile(file).toString()
+                } else {
+                    null
+                }
             } else {
-                repository.getStreamUrl(extractVideoId(selectedSong.id))
+                try {
+                    repository.getStreamUrl(extractVideoId(selectedSong.id))
+                } catch (e: Exception) {
+                    Log.e("MusicServiceConnection", "Error getting stream URL: ${e.message}")
+                    null
+                }
             }
 
             if (selectedSongStreamUrl == null) {

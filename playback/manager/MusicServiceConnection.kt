@@ -38,6 +38,9 @@ class MusicServiceConnection @Inject constructor(
     private val _duration = MutableStateFlow(0L)
     val duration = _duration.asStateFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error = _error.asStateFlow()
+
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
     init {
@@ -140,6 +143,27 @@ class MusicServiceConnection @Inject constructor(
                         .build()
                     _player.value?.addMediaItem(mediaItem)
                 }
+            }
+        }
+    }
+
+    fun updateQueue(currentSong: Song, queueSongs: List<Song>) {
+        scope.launch {
+            _player.value?.clearMediaItems()
+            playSong(currentSong, currentSong.localPath ?: "")
+            queueSongs.filter { it.id != currentSong.id }.forEach { song ->
+                val mediaMetadata = MediaMetadata.Builder()
+                    .setTitle(song.title)
+                    .setArtist(song.artist)
+                    .setArtworkUri(android.net.Uri.parse(song.coverUrl ?: ""))
+                    .build()
+
+                val mediaItem = MediaItem.Builder()
+                    .setMediaId(song.id)
+                    .setUri(song.localPath ?: "")
+                    .setMediaMetadata(mediaMetadata)
+                    .build()
+                _player.value?.addMediaItem(mediaItem)
             }
         }
     }
