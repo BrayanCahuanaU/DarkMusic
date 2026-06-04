@@ -1,10 +1,13 @@
 package com.example.darkmusic.core.network
 
+import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Response
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import java.io.IOException
 
 class NewPipeDownloader(
@@ -16,10 +19,9 @@ class NewPipeDownloader(
     }
 
     @Throws(IOException::class)
-    override fun execute(
-        request: org.schabi.newpipe.extractor.downloader.Request
-    ): Response {
+    override fun execute( request: org.schabi.newpipe.extractor.downloader.Request): Response {
         val url = request.url()
+        Log.d("NewPipeDownloader", "→ ${request.httpMethod()} $url")
         val method = request.httpMethod()
         val data = request.dataToSend()
 
@@ -35,8 +37,12 @@ class NewPipeDownloader(
 
         when (method.uppercase()) {
             "POST" -> {
-                // Especificamos el cuerpo correctamente si hay datos, si no, uno vacío.
-                val body = data?.toRequestBody(null, 0, data.size) ?: "".toRequestBody(null)
+                val mediaType = request.headers()["Content-Type"]
+                    ?.firstOrNull()
+                    ?.toMediaTypeOrNull()
+                    ?: "application/json".toMediaType()
+                val body = data?.toRequestBody(mediaType, 0, data.size)
+                    ?: "".toRequestBody(mediaType)
                 builder.post(body)
             }
             "GET" -> builder.get()
@@ -46,6 +52,7 @@ class NewPipeDownloader(
         val okHttpRequest = builder.build()
 
         client.newCall(okHttpRequest).execute().use { response ->
+            Log.d("NewPipeDownloader", "← ${response.code} $url")
             return Response(
                 response.code,
                 response.message,
