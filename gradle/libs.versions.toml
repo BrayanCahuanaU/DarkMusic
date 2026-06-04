@@ -16,11 +16,14 @@ coil = "2.7.0"
 work = "2.10.0"
 ksp = "2.0.21-1.0.28"
 newpipe = "0.26.1"
+youtubedl = "0.18.1"
 okhttp = "4.12.0"
 
 desugar = "2.1.5"
 
 [libraries]
+youtubedl-library = { group = "io.github.junkfood02.youtubedl-android", name = "library", version.ref = "youtubedl" }
+
 # ... (existing)
 android-desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugar" }
 # ... (anteriores)

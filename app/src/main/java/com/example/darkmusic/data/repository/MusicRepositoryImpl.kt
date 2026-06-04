@@ -21,6 +21,8 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.util.concurrent.TimeUnit
+import com.yausername.youtubedl_android.YoutubeDL
+import com.yausername.youtubedl_android.YoutubeDLRequest
 
 class MusicRepositoryImpl @Inject constructor(
     private val songDao: SongDao,
@@ -47,47 +49,28 @@ class MusicRepositoryImpl @Inject constructor(
 
     // ── getStreamUrl con fallbacks: NewPipe → InnerTube → Piped ───────────
     override suspend fun getStreamUrl(videoId: String): String? = withContext(Dispatchers.IO) {
-        val url = normalizeToYouTubeUrl(videoId)
         val cleanId = extractCleanVideoId(videoId)
+        val url = "https://www.youtube.com/watch?v=$cleanId"
 
-        // Intento 1: NewPipe
-        val newPipeResult = runCatching {
-            val linkHandler = youtube.streamLHFactory.fromUrl(url)
-            val extractor = youtube.getStreamExtractor(linkHandler)
-            extractor.fetchPage()
-            val info = StreamInfo.getInfo(extractor)
-
-            Log.d("MusicRepository", "NewPipe → audio=${info.audioStreams.size} hls=${info.hlsUrl} dash=${info.dashMpdUrl}")
-
-            when {
-                info.audioStreams.isNotEmpty() ->
-                    info.audioStreams
-                        .maxByOrNull { it.averageBitrate.takeIf { b -> b > 0 } ?: it.bitrate }
-                        ?.content
-                info.hlsUrl?.isNotEmpty() == true -> info.hlsUrl
-                info.dashMpdUrl?.isNotEmpty() == true -> info.dashMpdUrl
-                else -> null
+        try {
+            val request = YoutubeDLRequest(url).apply {
+                addOption("--get-url")
+                addOption("-f", "bestaudio")
+                addOption("--no-playlist")
             }
-        }.getOrElse {
-            Log.w("MusicRepository", "NewPipe falló: ${it::class.simpleName}: ${it.message}")
+            val response = YoutubeDL.getInstance().execute(request)
+            val streamUrl = response.out.trim().lines().firstOrNull { it.startsWith("http") }
+            if (streamUrl != null) {
+                Log.d("MusicRepository", "✓ yt-dlp obtuvo stream")
+            }
+            streamUrl
+        } catch (e: Exception) {
+            Log.e("MusicRepository", "yt-dlp falló: ${e.message}")
+            val streamUrl = response.out.trim().lines().firstOrNull { it.startsWith("http") }
+            Log.d("MusicRepository", "yt-dlp URL: ${streamUrl?.take(200)}")
+
             null
         }
-
-        if (newPipeResult != null) {
-            Log.d("MusicRepository", "✓ NewPipe obtuvo stream")
-            return@withContext newPipeResult
-        }
-
-        // Intento 2: InnerTube
-        Log.d("MusicRepository", "NewPipe sin streams, probando InnerTube para $cleanId")
-        val innerTubeResult = getStreamUrlViaInnerTube(cleanId)
-        if (innerTubeResult != null) {
-            return@withContext innerTubeResult
-        }
-
-        // Intento 3: Piped API (resuelve restricciones de región)
-        Log.d("MusicRepository", "InnerTube falló, probando Piped para $cleanId")
-        getStreamUrlViaPiped(cleanId)
     }
 
     // ── InnerTube ──────────────────────────────────────────────────────────

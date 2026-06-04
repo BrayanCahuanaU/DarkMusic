@@ -6,12 +6,15 @@ import dagger.hilt.android.HiltAndroidApp
 import okhttp3.OkHttpClient
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.localization.Localization
+import com.yausername.youtubedl_android.YoutubeDL
+
 
 @HiltAndroidApp
 class DarkMusicApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        
+
+        YoutubeDL.getInstance().init(this)
         // Inicialización con localización explícita para evitar problemas con tendencias
         NewPipe.init(
             NewPipeDownloader(OkHttpClient()),

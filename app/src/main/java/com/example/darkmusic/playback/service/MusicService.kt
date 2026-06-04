@@ -26,27 +26,44 @@ class MusicService : MediaSessionService() {
      * Implementado para evitar el crash 'UnsupportedOperationException'.
      */
     private val callback = object : MediaSession.Callback {
+
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>
+        ): ListenableFuture<List<MediaItem>> {
+            // Solo retornar items que tienen URI configurada
+            // Los items sin URI son placeholders de la cola que se resuelven después
+            val resolvedItems = mediaItems.map { item ->
+                if (item.localConfiguration?.uri != null) {
+                    item
+                } else {
+                    // Retornar con requestMetadata para que ExoPlayer no explote
+                    item.buildUpon()
+                        .setUri(android.net.Uri.EMPTY)
+                        .build()
+                }
+            }
+            return Futures.immediateFuture(resolvedItems)
+        }
+
         @OptIn(UnstableApi::class)
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             val player = mediaSession.player
-            
-            // Obtenemos la lista actual de canciones del reproductor
             val mediaItems = mutableListOf<MediaItem>()
             for (i in 0 until player.mediaItemCount) {
                 mediaItems.add(player.getMediaItemAt(i))
             }
-            
-            // Creamos el objeto de retorno con la posición exacta donde se quedó
-            val mediaItemsWithStartPosition = MediaSession.MediaItemsWithStartPosition(
-                mediaItems,
-                player.currentMediaItemIndex,
-                player.currentPosition
+            return Futures.immediateFuture(
+                MediaSession.MediaItemsWithStartPosition(
+                    mediaItems,
+                    player.currentMediaItemIndex,
+                    player.currentPosition
+                )
             )
-            
-            return Futures.immediateFuture(mediaItemsWithStartPosition)
         }
     }
 

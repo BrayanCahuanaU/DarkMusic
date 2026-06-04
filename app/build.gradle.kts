@@ -18,7 +18,9 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+        }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -43,6 +45,9 @@ android {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
+    }
+    packagingOptions {
+        jniLibs.useLegacyPackaging = true
     }
 }
 
@@ -96,6 +101,7 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
 
     implementation("org.json:json:20231013")
 }
