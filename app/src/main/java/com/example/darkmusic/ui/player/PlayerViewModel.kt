@@ -10,51 +10,65 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * ViewModel que gestiona el estado y las acciones del reproductor de música.
+ */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val musicServiceConnection: MusicServiceConnection,
     private val repository: MusicRepository
 ) : ViewModel() {
 
+    /** Información de la canción que se está reproduciendo actualmente. */
     val currentSong = musicServiceConnection.currentSong
+    
+    /** Estado de reproducción (true si está sonando, false si está pausado). */
     val isPlaying = musicServiceConnection.isPlaying
+    
+    /** Posición actual del progreso de la canción en milisegundos. */
     val currentPosition = musicServiceConnection.currentPosition
+    
+    /** Duración total de la canción actual en milisegundos. */
     val duration = musicServiceConnection.duration
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading = _isLoading.asStateFlow()
-
+    /** Flujo para exponer errores globales del servicio a la UI. */
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            musicServiceConnection.error.collect { err ->
-                if (err != null) _error.value = err
-            }
-        }
+        // Escucha y propaga errores desde el servicio de música
+        musicServiceConnection.error
+            .filterNotNull()
+            .onEach { _error.value = it }
+            .launchIn(viewModelScope)
     }
 
+    /** Limpia el error actual para que deje de mostrarse en la interfaz. */
     fun clearError() {
         _error.value = null
     }
 
+    /** Alterna el estado de reproducción entre Play y Pause. */
     fun playPause() {
         musicServiceConnection.playPause()
     }
 
+    /** Cambia el punto de reproducción actual a la posición indicada. */
     fun seekTo(position: Float) {
         musicServiceConnection.seekTo(position.toLong())
     }
 
+    /** Salta a la siguiente canción en la lista de reproducción. */
     fun skipNext() {
         musicServiceConnection.skipToNext()
     }
 
+    /** Regresa a la canción anterior en la lista de reproducción. */
     fun skipPrevious() {
         musicServiceConnection.skipToPrevious()
     }
 
+    /** Marca o desmarca una canción como favorita en la base de datos local. */
     fun toggleFavorite(song: Song) {
         viewModelScope.launch {
             val updatedSong = song.copy(isFavorite = !song.isFavorite)
@@ -62,42 +76,10 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    /** Solicita la descarga de una canción para escucharla sin conexión. */
     fun downloadSong(song: Song) {
         viewModelScope.launch {
             repository.downloadSong(song)
-        }
-    }
-
-    fun playSong(song: Song) {
-        viewModelScope.launch {
-
-            _isLoading.value = true
-            _error.value = null
-
-            try {
-
-                val streamUrl = if (song.isDownloaded && song.localPath != null) {
-                    song.localPath
-                } else {
-                    repository.getStreamUrl(song.id)
-                }
-
-                if (streamUrl != null) {
-                    musicServiceConnection.playSong(song, streamUrl)
-                } else {
-                    _error.value = "No se pudo obtener el stream"
-                }
-
-            } catch (e: Exception) {
-
-                e.printStackTrace()
-                _error.value = e.message ?: "Error al reproducir"
-
-            } finally {
-
-                _isLoading.value = false
-
-            }
         }
     }
 }

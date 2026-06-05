@@ -77,21 +77,22 @@ class SearchViewModel @Inject constructor(
 
     fun onSongClick(song: Song) {
         viewModelScope.launch {
-            // Intentamos primero obtener la URL por búsqueda (ExtractionHelper),
-            // si falla, usamos el flujo normal repository.getStreamUrl
-            val urlFromSearch = try {
-                extractionHelper.searchAndGetAudioUrl(song.title)
+            try {
+                // Priorizar contenido descargado localmente
+                val streamUrl = if (song.isDownloaded && song.localPath != null) {
+                    song.localPath
+                } else {
+                    // Si no está descargada, obtener URL de stream
+                    repository.getStreamUrl(song.id)
+                }
+
+                if (streamUrl != null) {
+                    // Pasar la lista de búsqueda actual como cola
+                    musicServiceConnection.playSong(song, streamUrl, _state.value.searchResults)
+                }
+
             } catch (e: Exception) {
-                null
-            }
-
-            val streamUrl = urlFromSearch ?: repository.getStreamUrl(song.id)
-
-            if (streamUrl != null) {
-                musicServiceConnection.playSong(song, streamUrl)
-            } else {
-                // fallback: intentar jugar con id (podría no funcionar)
-                musicServiceConnection.playSong(song, song.localPath ?: "")
+                e.printStackTrace()
             }
         }
     }

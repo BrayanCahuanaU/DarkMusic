@@ -101,7 +101,8 @@ class LibraryViewModel @Inject constructor(
                 }
 
                 if (streamUrl != null) {
-                    musicServiceConnection.playSong(song, streamUrl)
+                    // Usar la lista de todas las canciones como cola
+                    musicServiceConnection.playSong(song, streamUrl, _state.value.allSongs)
                 }
 
             } catch (e: Exception) {

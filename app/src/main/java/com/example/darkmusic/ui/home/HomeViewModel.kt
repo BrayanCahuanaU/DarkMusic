@@ -99,7 +99,9 @@ class HomeViewModel @Inject constructor(
                 }
 
                 if (streamUrl != null) {
-                    musicServiceConnection.playSong(song, streamUrl)
+                    // Usar la lista de canciones recientes como cola
+                    val queue = _state.value.recentSongs.ifEmpty { listOf(song) }
+                    musicServiceConnection.playSong(song, streamUrl, queue)
                 }
 
             } catch (e: Exception) {

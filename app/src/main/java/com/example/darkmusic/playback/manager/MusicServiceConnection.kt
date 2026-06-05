@@ -30,6 +30,9 @@ class MusicServiceConnection @Inject constructor(
     private val _currentSong = MutableStateFlow<Song?>(null)
     val currentSong = _currentSong.asStateFlow()
 
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading = _isLoading.asStateFlow()
+
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying = _isPlaying.asStateFlow()
 
@@ -83,6 +86,7 @@ class MusicServiceConnection @Inject constructor(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
+                _isLoading.value = playbackState == Player.STATE_BUFFERING
                 if (playbackState == Player.STATE_READY) {
                     _duration.value = player.duration.coerceAtLeast(0L)
                 }
@@ -141,10 +145,13 @@ class MusicServiceConnection @Inject constructor(
     /**
      * Reproduce una canción y configura la lista completa como cola.
      */
-    fun playSong(selectedSong: Song, streamUrl: String) {
+    fun playSong(selectedSong: Song, streamUrl: String, queue: List<Song> = emptyList()) {
         scope.launch {
 
             _currentSong.value = selectedSong
+            
+            // Actualizar la cola actual para que onMediaItemTransition pueda encontrar las canciones
+            currentQueue = if (queue.isNotEmpty()) queue else listOf(selectedSong)
 
             val player = _player.value
             if (player == null) {
@@ -169,6 +176,29 @@ class MusicServiceConnection @Inject constructor(
                 .build()
 
             player.setMediaItem(mediaItem)
+            
+            // Si hay cola, agregar los demás items
+            if (queue.isNotEmpty()) {
+                val queueItems = queue.filter { it.id != selectedSong.id }.map { song ->
+                    MediaItem.Builder()
+                        .setMediaId(song.id)
+                        // Inicialmente sin URI; se cargarán cuando sea necesario en fetchAndSetUri
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(song.title)
+                                .setArtist(song.artist)
+                                .apply {
+                                    song.coverUrl?.takeIf { it.isNotEmpty() }?.let {
+                                        setArtworkUri(android.net.Uri.parse(it))
+                                    }
+                                }
+                                .build()
+                        )
+                        .build()
+                }
+                player.addMediaItems(queueItems)
+            }
+            
             player.prepare()
             player.play()
         }
