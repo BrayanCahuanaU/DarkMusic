@@ -90,16 +90,21 @@ class HomeViewModel @Inject constructor(
      */
     fun onSongClick(song: Song) {
         viewModelScope.launch {
-            // Buscamos en qué lista está la canción para configurar la cola
-            val queue = when {
-                _state.value.trendingSongs.any { it.id == song.id } -> _state.value.trendingSongs
-                _state.value.favoriteGenresRecommendations.any { it.id == song.id } -> _state.value.favoriteGenresRecommendations
-                _state.value.downloadedGenresRecommendations.any { it.id == song.id } -> _state.value.downloadedGenresRecommendations
-                _state.value.recentSongs.any { it.id == song.id } -> _state.value.recentSongs
-                else -> listOf(song)
+            try {
+
+                val streamUrl = if (song.isDownloaded && song.localPath != null) {
+                    song.localPath
+                } else {
+                    repository.getStreamUrl(song.id)
+                }
+
+                if (streamUrl != null) {
+                    musicServiceConnection.playSong(song, streamUrl)
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            
-            musicServiceConnection.playSong(song, queue)
         }
     }
 

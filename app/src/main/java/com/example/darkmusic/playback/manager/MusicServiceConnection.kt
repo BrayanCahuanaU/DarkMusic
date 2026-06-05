@@ -141,76 +141,39 @@ class MusicServiceConnection @Inject constructor(
     /**
      * Reproduce una canción y configura la lista completa como cola.
      */
-    fun playSong(selectedSong: Song, songs: List<Song>) {
+    fun playSong(selectedSong: Song, streamUrl: String) {
         scope.launch {
-            currentQueue = songs
+
             _currentSong.value = selectedSong
 
             val player = _player.value
             if (player == null) {
                 Log.e("MusicServiceConnection", "Player is null")
-                currentQueue = emptyList()
-                _currentSong.value = null
                 return@launch
             }
 
-            // Obtener la URL de stream para la canción seleccionada justo antes de reproducir
-            val selectedSongStreamUrl = if (selectedSong.isDownloaded && selectedSong.localPath != null) {
-                val file = java.io.File(selectedSong.localPath)
-                if (file.exists()) {
-                    android.net.Uri.fromFile(file).toString()
-                } else {
-                    null
+            val mediaMetadata = MediaMetadata.Builder()
+                .setTitle(selectedSong.title)
+                .setArtist(selectedSong.artist)
+                .apply {
+                    selectedSong.coverUrl?.takeIf { it.isNotEmpty() }?.let {
+                        setArtworkUri(Uri.parse(it))
+                    }
                 }
-            } else {
-                try {
-                    repository.getStreamUrl(extractVideoId(selectedSong.id))
-                } catch (e: Exception) {
-                    Log.e("MusicServiceConnection", "Error getting stream URL: ${e.message}")
-                    null
-                }
-            }
+                .build()
 
-            if (selectedSongStreamUrl == null) {
-                Log.e("MusicServiceConnection", "Could not get stream URL for selected song: ${selectedSong.id}")
-                _error.value = "No se pudo obtener el stream para: ${selectedSong.title}"
-                currentQueue = emptyList()
-                _currentSong.value = null
-                return@launch
-            }
+            val mediaItem = MediaItem.Builder()
+                .setMediaId(selectedSong.id)
+                .setUri(streamUrl)
+                .setMediaMetadata(mediaMetadata)
+                .build()
 
-            // Crear los elementos de medios
-            val mediaItems = songs.map { song ->
-                val mediaMetadataBuilder = MediaMetadata.Builder()
-                    .setTitle(song.title)
-                    .setArtist(song.artist)
-
-                // Establecer la URI de portada solo si está disponible y no está vacía
-                song.coverUrl?.takeIf { it.isNotEmpty() }?.let { coverUri ->
-                    mediaMetadataBuilder.setArtworkUri(android.net.Uri.parse(coverUri))
-                }
-
-                val mediaMetadata = mediaMetadataBuilder.build()
-
-                val mediaItemBuilder = MediaItem.Builder()
-                    .setMediaId(song.id)
-                    .setMediaMetadata(mediaMetadata)
-
-                // Establecer la URI de medios solo para la canción seleccionada
-                if (song.id == selectedSong.id) {
-                    mediaItemBuilder.setUri(selectedSongStreamUrl)
-                }
-
-                mediaItemBuilder.build()
-            }
-
-            // Encontrar el índice de la canción seleccionada
-            val index = songs.indexOfFirst { it.id == selectedSong.id }.coerceAtLeast(0)
-            player.setMediaItems(mediaItems, index, 0L)
+            player.setMediaItem(mediaItem)
             player.prepare()
             player.play()
         }
     }
+
 
     fun playPause() {
         _player.value?.let {

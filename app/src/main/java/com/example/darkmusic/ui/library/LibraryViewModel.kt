@@ -92,9 +92,24 @@ class LibraryViewModel @Inject constructor(
 
     fun onSongClick(song: Song) {
         viewModelScope.launch {
-            musicServiceConnection.playSong(song, _state.value.allSongs)
+            try {
+
+                val streamUrl = if (song.isDownloaded && song.localPath != null) {
+                    song.localPath
+                } else {
+                    repository.getStreamUrl(song.id)
+                }
+
+                if (streamUrl != null) {
+                    musicServiceConnection.playSong(song, streamUrl)
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
+
 
     fun toggleFavorite(song: Song) {
         viewModelScope.launch {

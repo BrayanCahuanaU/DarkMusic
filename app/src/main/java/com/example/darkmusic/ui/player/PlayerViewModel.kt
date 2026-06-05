@@ -70,16 +70,33 @@ class PlayerViewModel @Inject constructor(
 
     fun playSong(song: Song) {
         viewModelScope.launch {
+
             _isLoading.value = true
             _error.value = null
+
             try {
-                val similarSongs = repository.searchSongs(song.artist).take(10)
-                val songList = if (similarSongs.isEmpty()) listOf(song) else listOf(song) + similarSongs
-                musicServiceConnection.playSong(song, songList)
+
+                val streamUrl = if (song.isDownloaded && song.localPath != null) {
+                    song.localPath
+                } else {
+                    repository.getStreamUrl(song.id)
+                }
+
+                if (streamUrl != null) {
+                    musicServiceConnection.playSong(song, streamUrl)
+                } else {
+                    _error.value = "No se pudo obtener el stream"
+                }
+
             } catch (e: Exception) {
-                _error.value = e.message ?: "Error al reproducir la canción"
+
+                e.printStackTrace()
+                _error.value = e.message ?: "Error al reproducir"
+
             } finally {
+
                 _isLoading.value = false
+
             }
         }
     }

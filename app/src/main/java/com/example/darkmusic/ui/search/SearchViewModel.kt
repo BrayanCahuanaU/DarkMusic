@@ -14,7 +14,8 @@ import javax.inject.Inject
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val repository: MusicRepository,
-    private val musicServiceConnection: MusicServiceConnection
+    private val musicServiceConnection: MusicServiceConnection,
+    private val extractionHelper: com.example.darkmusic.core.network.ExtractionHelper
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchState())
@@ -76,7 +77,22 @@ class SearchViewModel @Inject constructor(
 
     fun onSongClick(song: Song) {
         viewModelScope.launch {
-            musicServiceConnection.playSong(song, _state.value.searchResults)
+            // Intentamos primero obtener la URL por búsqueda (ExtractionHelper),
+            // si falla, usamos el flujo normal repository.getStreamUrl
+            val urlFromSearch = try {
+                extractionHelper.searchAndGetAudioUrl(song.title)
+            } catch (e: Exception) {
+                null
+            }
+
+            val streamUrl = urlFromSearch ?: repository.getStreamUrl(song.id)
+
+            if (streamUrl != null) {
+                musicServiceConnection.playSong(song, streamUrl)
+            } else {
+                // fallback: intentar jugar con id (podría no funcionar)
+                musicServiceConnection.playSong(song, song.localPath ?: "")
+            }
         }
     }
 

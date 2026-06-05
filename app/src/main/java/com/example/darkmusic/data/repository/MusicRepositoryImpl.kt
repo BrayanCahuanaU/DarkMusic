@@ -46,56 +46,51 @@ class MusicRepositoryImpl @Inject constructor(
     )
 
     // ── getStreamUrl con NewPipeExtractor primero, luego Piped → InnerTube → yt-dlp → Public fallback ───────────
-    override suspend fun getStreamUrl(videoId: String): String? = withContext(Dispatchers.IO) {
-        val cleanId = extractCleanVideoId(videoId)
-        val url = normalizeToYouTubeUrl(cleanId)
+    override suspend fun getStreamUrl(videoId: String): String? =
+        withContext(Dispatchers.IO) {
 
-        // 1) Intentar con NewPipeExtractor (más fiable para extraer streams activos)
-        try {
-            val linkHandler = youtube.streamLHFactory.fromUrl(url)
-            val extractor = youtube.getStreamExtractor(linkHandler)
-            extractor.fetchPage()
-            val info = StreamInfo.getInfo(extractor)
-            val audioStreams = info.getAudioStreams()
+            try {
+                val cleanId = extractCleanVideoId(videoId)
+                val url = normalizeToYouTubeUrl(cleanId)
 
-            // Elegir el mejor audio stream por bitrate
-            val best = audioStreams
-                .filter { it.isUrl() || it.getUrl()?.isNotEmpty() == true }
-                .maxByOrNull { stream ->
-                    val avg = try { stream.getAverageBitrate() } catch (e: Exception) { -1 }
-                    val br = if (avg > 0) avg else try { stream.getBitrate() } catch (e: Exception) { -1 }
-                    br
+                val linkHandler = youtube.streamLHFactory.fromUrl(url)
+                val extractor = youtube.getStreamExtractor(linkHandler)
+
+                extractor.fetchPage()
+
+                val bestAudio = extractor.audioStreams
+                    .mapNotNull { stream ->
+                        val streamUrl = stream.url ?: return@mapNotNull null
+
+                        Pair(stream, streamUrl)
+                    }
+                    .maxByOrNull { (stream, _) ->
+                        try {
+                            stream.averageBitrate
+                        } catch (_: Exception) {
+                            stream.bitrate
+                        }
+                    }
+
+                bestAudio?.let { (_, streamUrl) ->
+                    Log.d("MusicRepository", "✓ Stream obtenido")
+                    return@withContext streamUrl
                 }
 
-            if (best != null) {
-                val bestUrl = best.getUrl()
-                if (!bestUrl.isNullOrBlank()) {
-                    Log.d("MusicRepository", "✓ NewPipeExtractor obtuvo stream bitrate=${best.getAverageBitrate()}")
-                    return@withContext bestUrl
+                extractor.hlsUrl?.let { hls ->
+                    if (hls.isNotBlank()) {
+                        Log.d("MusicRepository", "✓ HLS obtenido")
+                        return@withContext hls
+                    }
                 }
-            }
 
-            // Si no hay audioStreams directos, probar HLS
-            info.getHlsUrl()?.takeIf { it.isNotEmpty() }?.let { hls ->
-                Log.d("MusicRepository", "✓ NewPipeExtractor obtuvo HLS: $hls")
-                return@withContext hls
-            }
+                null
 
-        } catch (e: Exception) {
-            Log.w("MusicRepository", "NewPipeExtractor falló para $url: ${e.message}")
+            } catch (e: Exception) {
+                Log.e("MusicRepository", "Error obteniendo stream", e)
+                null
+            }
         }
-
-        // 2) Intentar Piped
-        getStreamUrlViaPiped(cleanId)?.let { return@withContext it }
-
-        // 3) Fallback a InnerTube
-        getStreamUrlViaInnerTube(cleanId)?.let { return@withContext it }
-
-        // 4) Fallback final: URL pública estable para garantizar reproducción
-        val publicFallback = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-        Log.w("MusicRepository", "Usando fallback público para reproducción: $publicFallback")
-        return@withContext publicFallback
-    }
 
     // ── InnerTube ──────────────────────────────────────────────────────────
     private fun getStreamUrlViaInnerTube(videoId: String): String? {
@@ -114,7 +109,7 @@ class MusicRepositoryImpl @Inject constructor(
         ) ?: tryInnerTubeClient(
             videoId,
             clientName = "WEB",
-            clientVersion = "2.20240726.00.00",
+            clientVersion = "2.20260601.00.00",
             clientNameInt = "1",
             userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
         )
