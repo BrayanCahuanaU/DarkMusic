@@ -103,28 +103,6 @@ class MusicRepositoryImpl @Inject constructor(
             }
         }
 
-    // ── InnerTube ──────────────────────────────────────────────────────────
-    private fun getStreamUrlViaInnerTube(videoId: String): String? {
-        return tryInnerTubeClient(
-            videoId,
-            clientName = "IOS",
-            clientVersion = "19.29.1",
-            clientNameInt = "5",
-            userAgent = "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X;)"
-        ) ?: tryInnerTubeClient(
-            videoId,
-            clientName = "ANDROID",
-            clientVersion = "19.30.37",
-            clientNameInt = "3",
-            userAgent = "com.google.android.youtube/19.30.37 (Linux; U; Android 11) gzip"
-        ) ?: tryInnerTubeClient(
-            videoId,
-            clientName = "WEB",
-            clientVersion = "2.20260601.00.00",
-            clientNameInt = "1",
-            userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-        )
-    }
 
     private fun tryInnerTubeClient(
         videoId: String,
@@ -203,49 +181,6 @@ class MusicRepositoryImpl @Inject constructor(
             Log.e("MusicRepository", "InnerTube [$clientName] falló: ${e.message}")
             null
         }
-    }
-
-    // ── Piped API ──────────────────────────────────────────────────────────
-    private fun getStreamUrlViaPiped(videoId: String): String? {
-        for (instance in pipedInstances) {
-            try {
-                val request = Request.Builder()
-                    .url("$instance/streams/$videoId")
-                    .header("User-Agent", "DarkMusic/1.0")
-                    .build()
-
-                val response = innerTubeClient.newCall(request).execute()
-                val body = response.body?.string() ?: continue
-                Log.d("MusicRepository", "Piped [$instance] HTTP=${response.code} body=${body.take(200)}")
-
-                if (!response.isSuccessful) continue
-
-                val json = JSONObject(body)
-                val audioStreams = json.optJSONArray("audioStreams") ?: continue
-
-                var bestUrl: String? = null
-                var bestBitrate = 0
-
-                for (i in 0 until audioStreams.length()) {
-                    val stream = audioStreams.getJSONObject(i)
-                    val bitrate = stream.optInt("bitrate", 0)
-                    val url = stream.optString("url", "")
-                    if (url.isNotEmpty() && bitrate > bestBitrate) {
-                        bestUrl = url
-                        bestBitrate = bitrate
-                    }
-                }
-
-                if (bestUrl != null) {
-                    Log.d("MusicRepository", "✓ Piped [$instance] stream bitrate=$bestBitrate")
-                    return bestUrl
-                }
-
-            } catch (e: Exception) {
-                Log.w("MusicRepository", "Piped [$instance] falló: ${e.message}")
-            }
-        }
-        return null
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────

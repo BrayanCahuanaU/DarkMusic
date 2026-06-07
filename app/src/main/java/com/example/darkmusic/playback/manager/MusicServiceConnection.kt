@@ -75,10 +75,15 @@ class MusicServiceConnection @Inject constructor(
                 mediaItem?.let { item ->
                     val song = currentQueue.find { it.id == item.mediaId }
                     _currentSong.value = song
-                    
-                    // Si el item no tiene URI (porque es el siguiente en la cola), se la buscamos ahora
-                    if (item.localConfiguration?.uri == null && song != null) {
-                        fetchAndSetUri(song, player)
+
+                    // Pre-cargar el siguiente item de la cola
+                    val nextIndex = player.currentMediaItemIndex + 1
+                    if (nextIndex < player.mediaItemCount) {
+                        val nextItem = player.getMediaItemAt(nextIndex)
+                        val nextSong = currentQueue.find { it.id == nextItem.mediaId }
+                        if (nextItem.localConfiguration?.uri == null && nextSong != null) {
+                            fetchAndSetUri(nextSong, player)
+                        }
                     }
                 }
                 _duration.value = player.duration.coerceAtLeast(0L)
@@ -198,7 +203,13 @@ class MusicServiceConnection @Inject constructor(
                 }
                 player.addMediaItems(queueItems)
             }
-            
+
+            // Pre-cargar el segundo item de la cola si existe
+            if (queue.size > 1) {
+                val nextSong = queue.first { it.id != selectedSong.id }
+                fetchAndSetUri(nextSong, player)
+            }
+
             player.prepare()
             player.play()
         }

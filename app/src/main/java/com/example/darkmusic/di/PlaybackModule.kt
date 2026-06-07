@@ -41,8 +41,13 @@ object PlaybackModule {
     ): Player {
         val httpDataSourceFactory = RetryableHttpDataSource.Factory(context, repository)
 
-        val mediaSourceFactory =
-            DefaultMediaSourceFactory(httpDataSourceFactory)
+        // DefaultDataSource enruta file:// a FileDataSource y https:// a RetryableHttpDataSource
+        val dataSourceFactory = androidx.media3.datasource.DefaultDataSource.Factory(
+            context,
+            httpDataSourceFactory
+        )
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
 
         return ExoPlayer.Builder(context)
             .setAudioAttributes(audioAttributes, true)

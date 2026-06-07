@@ -79,9 +79,9 @@ class SearchViewModel @Inject constructor(
             try {
                 // Priorizar contenido descargado localmente
                 val streamUrl = if (song.isDownloaded && song.localPath != null) {
-                    song.localPath
+                    val file = java.io.File(song.localPath)
+                    if (file.exists()) "file://${song.localPath}" else repository.getStreamUrl(song.id)
                 } else {
-                    // Si no está descargada, obtener URL de stream
                     repository.getStreamUrl(song.id)
                 }
 

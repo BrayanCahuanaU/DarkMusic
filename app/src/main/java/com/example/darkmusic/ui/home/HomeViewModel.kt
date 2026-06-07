@@ -93,7 +93,8 @@ class HomeViewModel @Inject constructor(
             try {
 
                 val streamUrl = if (song.isDownloaded && song.localPath != null) {
-                    song.localPath
+                    val file = java.io.File(song.localPath)
+                    if (file.exists()) "file://${song.localPath}" else repository.getStreamUrl(song.id)
                 } else {
                     repository.getStreamUrl(song.id)
                 }
