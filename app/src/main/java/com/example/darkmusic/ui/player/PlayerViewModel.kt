@@ -24,6 +24,9 @@ class PlayerViewModel @Inject constructor(
     
     /** Estado de reproducción (true si está sonando, false si está pausado). */
     val isPlaying = musicServiceConnection.isPlaying
+
+    // Agrega esta línea:
+    val isLoading = musicServiceConnection.isLoading
     
     /** Posición actual del progreso de la canción en milisegundos. */
     val currentPosition = musicServiceConnection.currentPosition

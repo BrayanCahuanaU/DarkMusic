@@ -58,33 +58,44 @@ class MusicRepositoryImpl @Inject constructor(
 
                 extractor.fetchPage()
 
-                val bestAudio = extractor.audioStreams
-                    .mapNotNull { stream ->
-                        val streamUrl = stream.url ?: return@mapNotNull null
+                // DEBUG TEMPORAL
+                val audioCount = extractor.audioStreams.size
+                val videoCount = extractor.videoStreams.size
+                val videoOnlyCount = extractor.videoOnlyStreams.size
+                Log.d("MusicRepository", "Streams: audio=$audioCount video=$videoCount videoOnly=$videoOnlyCount hlsUrl=${extractor.hlsUrl}")
+                if (audioCount > 0) {
+                    val first = extractor.audioStreams.first()
+                    Log.d("MusicRepository", "Audio[0]: url=${first.url?.take(80)} bitrate=${first.bitrate} avgBitrate=${first.averageBitrate}")
+                }
+                if (videoCount > 0) {
+                    val first = extractor.videoStreams.first()
+                    Log.d("MusicRepository", "Video[0]: url=${first.url?.take(80)} bitrate=${first.bitrate}")
+                }
+                // FIN DEBUG
 
-                        Pair(stream, streamUrl)
-                    }
-                    .maxByOrNull { (stream, _) ->
-                        try {
-                            stream.averageBitrate
-                        } catch (_: Exception) {
-                            stream.bitrate
-                        }
-                    }
+                val bestAudio = extractor.audioStreams
+                    .mapNotNull { stream -> stream.url?.let { Pair(stream, it) } }
+                    .maxByOrNull { (stream, _) -> try { stream.averageBitrate } catch (_: Exception) { stream.bitrate } }
 
                 bestAudio?.let { (_, streamUrl) ->
-                    Log.d("MusicRepository", "✓ Stream obtenido")
+                    Log.d("MusicRepository", "✓ Audio stream")
                     return@withContext streamUrl
                 }
 
-                extractor.hlsUrl?.let { hls ->
-                    if (hls.isNotBlank()) {
-                        Log.d("MusicRepository", "✓ HLS obtenido")
-                        return@withContext hls
-                    }
+                // Fallback: video muxed (contiene audio)
+                val bestVideo = extractor.videoStreams
+                    .mapNotNull { stream -> stream.url?.let { Pair(stream, it) } }
+                    .maxByOrNull { (stream, _) -> stream.bitrate }
+
+                bestVideo?.let { (_, streamUrl) ->
+                    Log.d("MusicRepository", "✓ Video stream (muxed)")
+                    return@withContext streamUrl
                 }
 
-                null
+                extractor.hlsUrl?.takeIf { it.isNotBlank() }?.let { hls ->
+                    Log.d("MusicRepository", "✓ HLS")
+                    return@withContext hls
+                }
 
             } catch (e: Exception) {
                 Log.e("MusicRepository", "Error obteniendo stream", e)

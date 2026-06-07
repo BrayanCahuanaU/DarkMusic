@@ -15,7 +15,6 @@ import javax.inject.Inject
 class SearchViewModel @Inject constructor(
     private val repository: MusicRepository,
     private val musicServiceConnection: MusicServiceConnection,
-    private val extractionHelper: com.example.darkmusic.core.network.ExtractionHelper
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(SearchState())
