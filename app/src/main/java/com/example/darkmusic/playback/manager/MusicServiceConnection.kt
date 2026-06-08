@@ -242,7 +242,7 @@ class MusicServiceConnection @Inject constructor(
     }
 
     private fun extractVideoId(url: String): String {
-        return Uri.parse(url).getQueryParameter("v") ?: url
+        return repository.extractVideoId(url)
     }
 
     fun updateQueue(currentSong: Song, newQueue: List<Song>) {

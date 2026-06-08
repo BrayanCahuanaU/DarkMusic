@@ -2,6 +2,7 @@ package com.example.darkmusic.di
 
 import android.content.Context
 import androidx.room.Room
+import com.example.darkmusic.data.local.dao.RecentSearchDao
 import com.example.darkmusic.data.local.dao.SongDao
 import com.example.darkmusic.data.local.database.MusicDatabase
 import dagger.Module
@@ -30,5 +31,10 @@ object DatabaseModule {
     @Provides
     fun provideSongDao(database: MusicDatabase): SongDao {
         return database.songDao()
+    }
+
+    @Provides
+    fun provideRecentSearchDao(database: MusicDatabase): RecentSearchDao {
+        return database.recentSearchDao()
     }
 }

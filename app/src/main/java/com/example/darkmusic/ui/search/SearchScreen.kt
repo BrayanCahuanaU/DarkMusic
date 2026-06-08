@@ -52,9 +52,27 @@ fun SearchScreen(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = Color.Red)
             }
-        } else if (state.searchResults.isEmpty() && state.query.isNotBlank()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "No se encontraron resultados", color = LabelSecondaryDark)
+        } else if (state.searchResults.isEmpty()) {
+            if (state.query.isBlank()) {
+                if (state.recentSearches.isNotEmpty()) {
+                    RecentSearchesSection(
+                        recentSearches = state.recentSearches,
+                        onSongClick = { song ->
+                            viewModel.onSongClick(song)
+                            onSongClick()
+                        },
+                        onRemoveRecentSearch = { viewModel.onRemoveRecentSearch(it) },
+                        onClearHistory = { viewModel.onClearHistory() }
+                    )
+                } else {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = "Busca tus canciones favoritas", color = LabelSecondaryDark)
+                    }
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(text = "No se encontraron resultados", color = LabelSecondaryDark)
+                }
             }
         } else {
             LazyColumn(
@@ -75,6 +93,51 @@ fun SearchScreen(
                         isDownloading = state.downloadingSongIds.contains(song.id)
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecentSearchesSection(
+    recentSearches: List<com.example.darkmusic.domain.model.Song>,
+    onSongClick: (com.example.darkmusic.domain.model.Song) -> Unit,
+    onRemoveRecentSearch: (com.example.darkmusic.domain.model.Song) -> Unit,
+    onClearHistory: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Búsquedas recientes",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            TextButton(onClick = onClearHistory) {
+                Text(text = "Limpiar todo", color = Color.Red)
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 80.dp)
+        ) {
+            items(recentSearches) { song ->
+                SongItem(
+                    song = song,
+                    onClick = { onSongClick(song) },
+                    onFavoriteClick = { /* No favorito en historial directamente para evitar desorden */ },
+                    onDownloadClick = { /* No descarga en historial directamente */ },
+                    onAddToPlaylist = { /* TODO */ },
+                    onAddToAlbum = { /* TODO */ },
+                    onRemoveClick = { onRemoveRecentSearch(song) }
+                )
             }
         }
     }

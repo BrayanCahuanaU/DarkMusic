@@ -1,13 +1,12 @@
 package com.example.darkmusic.ui.player
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.domain.repository.MusicRepository
 import com.example.darkmusic.playback.manager.MusicServiceConnection
+import com.example.darkmusic.ui.common.BaseMusicViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -15,9 +14,9 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
-    private val musicServiceConnection: MusicServiceConnection,
-    private val repository: MusicRepository
-) : ViewModel() {
+    musicServiceConnection: MusicServiceConnection,
+    repository: MusicRepository
+) : BaseMusicViewModel(repository, musicServiceConnection) {
 
     /** Información de la canción que se está reproduciendo actualmente. */
     val currentSong = musicServiceConnection.currentSong
@@ -69,20 +68,5 @@ class PlayerViewModel @Inject constructor(
     /** Regresa a la canción anterior en la lista de reproducción. */
     fun skipPrevious() {
         musicServiceConnection.skipToPrevious()
-    }
-
-    /** Marca o desmarca una canción como favorita en la base de datos local. */
-    fun toggleFavorite(song: Song) {
-        viewModelScope.launch {
-            val updatedSong = song.copy(isFavorite = !song.isFavorite)
-            repository.insertSong(updatedSong)
-        }
-    }
-
-    /** Solicita la descarga de una canción para escucharla sin conexión. */
-    fun downloadSong(song: Song) {
-        viewModelScope.launch {
-            repository.downloadSong(song)
-        }
     }
 }

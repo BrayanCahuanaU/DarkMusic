@@ -2,13 +2,16 @@ package com.example.darkmusic.data.repository
 
 import android.util.Log
 import com.example.darkmusic.core.network.MusicDownloader
+import com.example.darkmusic.data.local.dao.RecentSearchDao
 import com.example.darkmusic.data.local.dao.SongDao
 import com.example.darkmusic.data.mapper.toDomain
 import com.example.darkmusic.data.mapper.toEntity
+import com.example.darkmusic.data.mapper.toRecentSearchEntity
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.domain.repository.MusicRepository
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -24,6 +27,7 @@ import java.util.concurrent.TimeUnit
 
 class MusicRepositoryImpl @Inject constructor(
     private val songDao: SongDao,
+    private val recentSearchDao: RecentSearchDao,
     private val musicDownloader: MusicDownloader
 ) : MusicRepository {
 
@@ -253,6 +257,22 @@ class MusicRepositoryImpl @Inject constructor(
             Log.e("MusicRepository", "Error obteniendo info de $songId", e)
             null
         }
+    }
+
+    override fun getRecentSearches(): Flow<List<Song>> {
+        return recentSearchDao.getRecentSearches().map { it.map { e -> e.toDomain() } }
+    }
+
+    override suspend fun addSongToHistory(song: Song) = withContext(Dispatchers.IO) {
+        recentSearchDao.insertRecentSearch(song.toRecentSearchEntity(System.currentTimeMillis()))
+    }
+
+    override suspend fun removeSongFromHistory(songId: String) = withContext(Dispatchers.IO) {
+        recentSearchDao.deleteRecentSearch(songId)
+    }
+
+    override suspend fun clearSearchHistory() = withContext(Dispatchers.IO) {
+        recentSearchDao.clearHistory()
     }
 
     private fun mapInfoItems(items: List<InfoItem>) =

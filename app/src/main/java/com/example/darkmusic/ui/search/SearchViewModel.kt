@@ -1,10 +1,10 @@
 package com.example.darkmusic.ui.search
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.domain.repository.MusicRepository
 import com.example.darkmusic.playback.manager.MusicServiceConnection
+import com.example.darkmusic.ui.common.BaseMusicViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
@@ -13,9 +13,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    private val repository: MusicRepository,
-    private val musicServiceConnection: MusicServiceConnection,
-) : ViewModel() {
+    repository: MusicRepository,
+    musicServiceConnection: MusicServiceConnection,
+) : BaseMusicViewModel(repository, musicServiceConnection) {
 
     private val _state = MutableStateFlow(SearchState())
     val state = _state.asStateFlow()
@@ -23,6 +23,13 @@ class SearchViewModel @Inject constructor(
     private val _searchQuery = MutableStateFlow("")
 
     init {
+        // Collect search history
+        repository.getRecentSearches()
+            .onEach { history ->
+                _state.update { it.copy(recentSearches = history) }
+            }
+            .launchIn(viewModelScope)
+
         @OptIn(FlowPreview::class)
         _searchQuery
             .debounce(500L)
@@ -74,44 +81,34 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    fun onSongClick(song: Song) {
+    override fun onSongClick(song: Song, queue: List<Song>) {
         viewModelScope.launch {
-            try {
-                // Priorizar contenido descargado localmente
-                val streamUrl = if (song.isDownloaded && song.localPath != null) {
-                    val file = java.io.File(song.localPath)
-                    if (file.exists()) "file://${song.localPath}" else repository.getStreamUrl(song.id)
-                } else {
-                    repository.getStreamUrl(song.id)
-                }
-
-                if (streamUrl != null) {
-                    // Pasar la lista de búsqueda actual como cola
-                    musicServiceConnection.playSong(song, streamUrl, _state.value.searchResults)
-                }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            // Add to search history
+            repository.addSongToHistory(song)
+            // Proceder con la reproducción usando la lógica base
+            super.onSongClick(song, _state.value.searchResults)
         }
     }
 
-    fun toggleFavorite(song: Song) {
-        viewModelScope.launch {
-            repository.insertSong(song.copy(isFavorite = !song.isFavorite))
-        }
-    }
-
-    fun downloadSong(song: Song) {
-        if (song.isDownloaded || _state.value.downloadingSongIds.contains(song.id)) return
-        
-        viewModelScope.launch {
-            _state.update { it.copy(downloadingSongIds = it.downloadingSongIds + song.id) }
-            try {
-                repository.downloadSong(song)
-            } finally {
+    override fun downloadSong(song: Song, onDownloadStatusChange: (Boolean) -> Unit) {
+        super.downloadSong(song) { isDownloading ->
+            if (isDownloading) {
+                _state.update { it.copy(downloadingSongIds = it.downloadingSongIds + song.id) }
+            } else {
                 _state.update { it.copy(downloadingSongIds = it.downloadingSongIds - song.id) }
             }
+        }
+    }
+
+    fun onRemoveRecentSearch(song: Song) {
+        viewModelScope.launch {
+            repository.removeSongFromHistory(song.id)
+        }
+    }
+
+    fun onClearHistory() {
+        viewModelScope.launch {
+            repository.clearSearchHistory()
         }
     }
 }

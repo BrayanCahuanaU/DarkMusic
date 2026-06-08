@@ -30,7 +30,8 @@ fun SongItem(
     onAddToPlaylist: () -> Unit,
     onAddToAlbum: () -> Unit,
     modifier: Modifier = Modifier,
-    isDownloading: Boolean = false // Nuevo parámetro para el estado de descarga
+    isDownloading: Boolean = false,
+    onRemoveClick: (() -> Unit)? = null
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -110,36 +111,50 @@ fun SongItem(
             )
         }
 
-        // Icono de 3 puntos (Menu)
+        // Icono de 3 puntos (Menu) o Botón de eliminar
         Box {
-            IconButton(onClick = { showMenu = true }) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "More",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
+            if (onRemoveClick != null) {
+                IconButton(onClick = onRemoveClick) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Remove",
+                        tint = LabelSecondaryDark,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            } else {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Añadir a lista de reproducción") },
-                    leadingIcon = { Icon(Icons.Default.PlaylistAdd, contentDescription = null) },
-                    onClick = {
-                        onAddToPlaylist()
-                        showMenu = false
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("Agregar a álbum") },
-                    leadingIcon = { Icon(Icons.Default.Album, contentDescription = null) },
-                    onClick = {
-                        onAddToAlbum()
-                        showMenu = false
-                    }
-                )
+            
+            if (showMenu) {
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Añadir a lista de reproducción") },
+                        leadingIcon = { Icon(Icons.Default.PlaylistAdd, contentDescription = null) },
+                        onClick = {
+                            onAddToPlaylist()
+                            showMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Agregar a álbum") },
+                        leadingIcon = { Icon(Icons.Default.Album, contentDescription = null) },
+                        onClick = {
+                            onAddToAlbum()
+                            showMenu = false
+                        }
+                    )
+                }
             }
         }
     }

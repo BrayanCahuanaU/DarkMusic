@@ -24,6 +24,12 @@ interface MusicRepository {
     suspend fun getSongsByGenre(genre: String): List<Song>
     suspend fun getFullSongInfo(songId: String): Song?
 
+    // Search History
+    fun getRecentSearches(): Flow<List<Song>>
+    suspend fun addSongToHistory(song: Song)
+    suspend fun removeSongFromHistory(songId: String)
+    suspend fun clearSearchHistory()
+
     fun extractVideoId(url: String): String {
         return Uri.parse(url).getQueryParameter("v") ?: url
     }

@@ -1,10 +1,10 @@
 package com.example.darkmusic.ui.home
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.domain.repository.MusicRepository
 import com.example.darkmusic.playback.manager.MusicServiceConnection
+import com.example.darkmusic.ui.common.BaseMusicViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -12,9 +12,9 @@ import javax.inject.Inject
 
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val repository: MusicRepository,
-    private val musicServiceConnection: MusicServiceConnection
-) : ViewModel() {
+    repository: MusicRepository,
+    musicServiceConnection: MusicServiceConnection
+) : BaseMusicViewModel(repository, musicServiceConnection) {
 
     private val _state = MutableStateFlow(HomeState())
     val state = _state.asStateFlow()
@@ -85,49 +85,11 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Lógica mejorada para reproducir una canción con cola dinámica.
-     */
-    fun onSongClick(song: Song) {
-        viewModelScope.launch {
-            try {
-
-                val streamUrl = if (song.isDownloaded && song.localPath != null) {
-                    val file = java.io.File(song.localPath)
-                    if (file.exists()) "file://${song.localPath}" else repository.getStreamUrl(song.id)
-                } else {
-                    repository.getStreamUrl(song.id)
-                }
-
-                if (streamUrl != null) {
-                    // Usar la lista de canciones recientes como cola
-                    val queue = _state.value.recentSongs.ifEmpty { listOf(song) }
-                    musicServiceConnection.playSong(song, streamUrl, queue)
-                }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    fun toggleFavorite(song: Song) {
-        viewModelScope.launch {
-            val fullInfo = if (song.genre == null) repository.getFullSongInfo(song.id) else song
-            val updatedSong = (fullInfo ?: song).copy(isFavorite = !song.isFavorite)
-            repository.insertSong(updatedSong)
-        }
-    }
-
-    fun downloadSong(song: Song) {
-        if (song.isDownloaded || _state.value.downloadingSongIds.contains(song.id)) return
-        
-        viewModelScope.launch {
-            _state.update { it.copy(downloadingSongIds = it.downloadingSongIds + song.id) }
-            try {
-                val fullSong = if (song.genre == null) repository.getFullSongInfo(song.id) ?: song else song
-                repository.downloadSong(fullSong)
-            } finally {
+    override fun downloadSong(song: Song, onDownloadStatusChange: (Boolean) -> Unit) {
+        super.downloadSong(song) { isDownloading ->
+            if (isDownloading) {
+                _state.update { it.copy(downloadingSongIds = it.downloadingSongIds + song.id) }
+            } else {
                 _state.update { it.copy(downloadingSongIds = it.downloadingSongIds - song.id) }
             }
         }
