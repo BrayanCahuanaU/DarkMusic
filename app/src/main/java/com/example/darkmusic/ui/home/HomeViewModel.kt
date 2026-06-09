@@ -3,6 +3,7 @@ package com.example.darkmusic.ui.home
 import androidx.lifecycle.viewModelScope
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.domain.repository.MusicRepository
+import com.example.darkmusic.domain.repository.PlaylistRepository
 import com.example.darkmusic.playback.manager.MusicServiceConnection
 import com.example.darkmusic.ui.common.BaseMusicViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,11 +14,14 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     repository: MusicRepository,
+    private val playlistRepository: PlaylistRepository,
     musicServiceConnection: MusicServiceConnection
 ) : BaseMusicViewModel(repository, musicServiceConnection) {
 
     private val _state = MutableStateFlow(HomeState())
     val state = _state.asStateFlow()
+
+    val playlists = playlistRepository.getPlaylists()
 
     init {
         loadHomeData()
@@ -82,6 +86,12 @@ class HomeViewModel @Inject constructor(
                     ) 
                 }
             }
+        }
+    }
+
+    fun addToPlaylist(song: Song, playlistId: Long) {
+        viewModelScope.launch {
+            playlistRepository.addSongToPlaylist(playlistId, song)
         }
     }
 

@@ -1,9 +1,15 @@
 package com.example.darkmusic.ui.player
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -19,9 +25,13 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.darkmusic.core.designsystem.*
+import com.example.darkmusic.domain.model.Song
 import java.util.concurrent.TimeUnit
 import java.util.Locale
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayerScreen(
     viewModel: PlayerViewModel = hiltViewModel()
@@ -31,8 +41,11 @@ fun PlayerScreen(
     val currentPosition by viewModel.currentPosition.collectAsState()
     val duration by viewModel.duration.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val currentQueue by viewModel.currentQueue.collectAsState()
     val error by viewModel.error.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    
+    var showQueueSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(error) {
         error?.let {
@@ -198,14 +211,150 @@ fun PlayerScreen(
                         tint = if (currentSong?.isDownloaded == true) SystemBlue else LabelSecondaryDark
                     )
                 }
-                IconButton(onClick = { /* Agregar al album */ }) {
-                    Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = "Agregar a lista", tint = LabelSecondaryDark)
+                IconButton(onClick = { showQueueSheet = true }) {
+                    Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Ver cola", tint = if (showQueueSheet) Color.White else LabelSecondaryDark)
                 }
                 IconButton(onClick = { /* Más opciones */ }) {
                     Icon(Icons.Default.MoreHoriz, contentDescription = "Más", tint = LabelSecondaryDark)
                 }
             }
         }
+
+        if (showQueueSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showQueueSheet = false },
+                containerColor = Surface1Dark,
+                dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.3f)) }
+            ) {
+                QueueList(
+                    queue = currentQueue,
+                    currentSongId = currentSong?.id,
+                    onRemove = { viewModel.removeFromQueue(it) },
+                    onReorder = { from, to -> viewModel.moveInQueue(from, to) },
+                    onSongClick = { song -> 
+                        viewModel.onSongClick(song, currentQueue)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun QueueList(
+    queue: List<Song>,
+    currentSongId: String?,
+    onRemove: (String) -> Unit,
+    onReorder: (Int, Int) -> Unit,
+    onSongClick: (Song) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight(0.7f)
+            .padding(horizontal = 20.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "A continuación",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+            // Aquí se podría añadir un botón de "Limpiar cola" si se desea
+        }
+
+        val lazyListState = rememberLazyListState()
+        val reorderableLazyListState = rememberReorderableLazyListState(
+            lazyListState = lazyListState,
+            onMove = { from, to -> onReorder(from.index, to.index) }
+        )
+
+        LazyColumn(
+            state = lazyListState,
+            modifier = Modifier.fillMaxSize()
+        ) {
+            itemsIndexed(queue, key = { _, song -> song.id }) { index, song ->
+                ReorderableItem(reorderableLazyListState, key = song.id) { isDragging ->
+                    val elevation by animateDpAsState(if (isDragging) 8.dp else 0.dp)
+                    Surface(
+                        tonalElevation = elevation,
+                        color = if (isDragging) Color.White.copy(alpha = 0.1f) else Color.Transparent
+                    ) {
+                        QueueItem(
+                            song = song,
+                            isCurrent = song.id == currentSongId,
+                            onClick = { onSongClick(song) },
+                            onRemove = { onRemove(song.id) },
+                            modifier = Modifier.draggableHandle()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun QueueItem(
+    song: Song,
+    isCurrent: Boolean,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = song.coverUrl,
+            contentDescription = null,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(4.dp)),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = song.title,
+                color = if (isCurrent) AppleMusicRed else Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = song.artist,
+                color = LabelSecondaryDark,
+                fontSize = 12.sp,
+                maxLines = 1
+            )
+        }
+        IconButton(onClick = onRemove) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Quitar",
+                tint = LabelSecondaryDark,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Icon(
+            imageVector = Icons.Default.Reorder,
+            contentDescription = "Mover",
+            tint = LabelSecondaryDark,
+            modifier = modifier.size(20.dp)
+        )
     }
 }
 

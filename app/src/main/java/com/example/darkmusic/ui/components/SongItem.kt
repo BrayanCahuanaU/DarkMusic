@@ -29,6 +29,7 @@ fun SongItem(
     onDownloadClick: () -> Unit,
     onAddToPlaylist: () -> Unit,
     onAddToAlbum: () -> Unit,
+    onAddToQueue: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     isDownloading: Boolean = false,
     onRemoveClick: (() -> Unit)? = null
@@ -138,6 +139,16 @@ fun SongItem(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false }
                 ) {
+                    onAddToQueue?.let {
+                        DropdownMenuItem(
+                            text = { Text("Agregar a la cola") },
+                            leadingIcon = { Icon(Icons.Default.QueueMusic, contentDescription = null) },
+                            onClick = {
+                                it()
+                                showMenu = false
+                            }
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text("Añadir a lista de reproducción") },
                         leadingIcon = { Icon(Icons.Default.PlaylistAdd, contentDescription = null) },

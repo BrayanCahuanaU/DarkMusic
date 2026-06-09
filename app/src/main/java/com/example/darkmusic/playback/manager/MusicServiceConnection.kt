@@ -42,7 +42,8 @@ class MusicServiceConnection @Inject constructor(
     private val _duration = MutableStateFlow(0L)
     val duration = _duration.asStateFlow()
 
-    private var currentQueue: List<Song> = emptyList()
+    private val _currentQueue = MutableStateFlow<List<Song>>(emptyList())
+    val currentQueue = _currentQueue.asStateFlow()
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -73,14 +74,14 @@ class MusicServiceConnection @Inject constructor(
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 mediaItem?.let { item ->
-                    val song = currentQueue.find { it.id == item.mediaId }
+                    val song = _currentQueue.value.find { it.id == item.mediaId }
                     _currentSong.value = song
 
                     // Pre-cargar el siguiente item de la cola
                     val nextIndex = player.currentMediaItemIndex + 1
                     if (nextIndex < player.mediaItemCount) {
                         val nextItem = player.getMediaItemAt(nextIndex)
-                        val nextSong = currentQueue.find { it.id == nextItem.mediaId }
+                        val nextSong = _currentQueue.value.find { it.id == nextItem.mediaId }
                         if (nextItem.localConfiguration?.uri == null && nextSong != null) {
                             fetchAndSetUri(nextSong, player)
                         }
@@ -156,7 +157,8 @@ class MusicServiceConnection @Inject constructor(
             _currentSong.value = selectedSong
             
             // Actualizar la cola actual para que onMediaItemTransition pueda encontrar las canciones
-            currentQueue = if (queue.isNotEmpty()) queue else listOf(selectedSong)
+            val newQueue = if (queue.isNotEmpty()) queue else listOf(selectedSong)
+            _currentQueue.value = newQueue
 
             val player = _player.value
             if (player == null) {
@@ -253,13 +255,41 @@ class MusicServiceConnection @Inject constructor(
                     .build()
             }
             player.addMediaItems(mediaItems)
-            currentQueue = currentQueue + songs
+            _currentQueue.value = _currentQueue.value + songs
             
             // Si el reproductor estaba detenido, prepararlo y reproducir la primera canción añadida
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
                 player.prepare()
                 player.play()
             }
+        }
+    }
+
+    fun removeSongsFromQueue(songIds: List<String>) {
+        val player = _player.value ?: return
+        scope.launch {
+            val indicesToRemove = mutableListOf<Int>()
+            for (i in 0 until player.mediaItemCount) {
+                if (songIds.contains(player.getMediaItemAt(i).mediaId)) {
+                    indicesToRemove.add(i)
+                }
+            }
+            // Eliminar de atrás hacia adelante para no invalidar índices
+            indicesToRemove.sortedDescending().forEach { index ->
+                player.removeMediaItem(index)
+            }
+            _currentQueue.value = _currentQueue.value.filterNot { songIds.contains(it.id) }
+        }
+    }
+
+    fun moveSongInQueue(fromIndex: Int, toIndex: Int) {
+        val player = _player.value ?: return
+        scope.launch {
+            player.moveMediaItem(fromIndex, toIndex)
+            val mutableList = _currentQueue.value.toMutableList()
+            val song = mutableList.removeAt(fromIndex)
+            mutableList.add(toIndex, song)
+            _currentQueue.value = mutableList
         }
     }
 
@@ -277,7 +307,7 @@ class MusicServiceConnection @Inject constructor(
     fun updateQueue(currentSong: Song, newQueue: List<Song>) {
         val player = _player.value ?: return
         if (player.currentMediaItem?.mediaId == currentSong.id) {
-            currentQueue = newQueue
+            _currentQueue.value = newQueue
             // No interrumpir el item actual, solo agregar los demás
             val currentIndex = newQueue.indexOfFirst { it.id == currentSong.id }
             if (currentIndex < 0) return
@@ -301,9 +331,27 @@ class MusicServiceConnection @Inject constructor(
                 val playerCurrentIndex = (0 until player.mediaItemCount)
                     .firstOrNull { player.getMediaItemAt(it).mediaId == currentSong.id }
                     ?: return@launch
-                // Agregar siguientes
-                if (playerCurrentIndex + 1 < items.size) {
-                    player.addMediaItems(playerCurrentIndex + 1, items.drop(currentIndex + 1))
+                
+                // Limpiar items anteriores y posteriores
+                if (player.mediaItemCount > 1) {
+                    // Primero removemos lo que hay después
+                    if (playerCurrentIndex + 1 < player.mediaItemCount) {
+                        player.removeMediaItems(playerCurrentIndex + 1, player.mediaItemCount)
+                    }
+                    // Luego removemos lo que hay antes
+                    if (playerCurrentIndex > 0) {
+                        player.removeMediaItems(0, playerCurrentIndex)
+                    }
+                }
+
+                // Ahora el item actual está en el índice 0 del player
+                // Agregamos lo que va antes
+                if (currentIndex > 0) {
+                    player.addMediaItems(0, items.take(currentIndex))
+                }
+                // Agregamos lo que va después
+                if (currentIndex + 1 < items.size) {
+                    player.addMediaItems(currentIndex + 1, items.drop(currentIndex + 1))
                 }
             }
         }

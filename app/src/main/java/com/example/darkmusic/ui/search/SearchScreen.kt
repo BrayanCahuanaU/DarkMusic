@@ -28,6 +28,8 @@ fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    var songToAddToPlaylist by remember { mutableStateOf<com.example.darkmusic.domain.model.Song?>(null) }
+    val playlists by viewModel.playlists.collectAsState(initial = emptyList())
 
     Column(
         modifier = Modifier
@@ -62,6 +64,8 @@ fun SearchScreen(
                             onSongClick()
                         },
                         onRemoveRecentSearch = { viewModel.onRemoveRecentSearch(it) },
+                        onAddToQueue = { viewModel.addToQueue(it) },
+                        onAddToPlaylist = { songToAddToPlaylist = it },
                         onClearHistory = { viewModel.onClearHistory() }
                     )
                 } else {
@@ -88,12 +92,26 @@ fun SearchScreen(
                         },
                         onFavoriteClick = { viewModel.toggleFavorite(song) },
                         onDownloadClick = { viewModel.downloadSong(song) },
-                        onAddToPlaylist = { /* TODO */ },
-                        onAddToAlbum = { /* TODO */ },
+                        onAddToQueue = { viewModel.addToQueue(song) },
+                        onAddToPlaylist = { songToAddToPlaylist = song },
+                        onAddToAlbum = { songToAddToPlaylist = song },
                         isDownloading = state.downloadingSongIds.contains(song.id)
                     )
                 }
             }
+        }
+
+        if (songToAddToPlaylist != null) {
+            com.example.darkmusic.ui.library.AddToPlaylistDialog(
+                playlists = playlists,
+                onDismiss = { songToAddToPlaylist = null },
+                onPlaylistSelected = { playlist ->
+                    songToAddToPlaylist?.let { song ->
+                        viewModel.addToPlaylist(song, playlist.id)
+                    }
+                    songToAddToPlaylist = null
+                }
+            )
         }
     }
 }
@@ -103,6 +121,8 @@ fun RecentSearchesSection(
     recentSearches: List<com.example.darkmusic.domain.model.Song>,
     onSongClick: (com.example.darkmusic.domain.model.Song) -> Unit,
     onRemoveRecentSearch: (com.example.darkmusic.domain.model.Song) -> Unit,
+    onAddToQueue: (com.example.darkmusic.domain.model.Song) -> Unit,
+    onAddToPlaylist: (com.example.darkmusic.domain.model.Song) -> Unit,
     onClearHistory: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -134,8 +154,9 @@ fun RecentSearchesSection(
                     onClick = { onSongClick(song) },
                     onFavoriteClick = { /* No favorito en historial directamente para evitar desorden */ },
                     onDownloadClick = { /* No descarga en historial directamente */ },
-                    onAddToPlaylist = { /* TODO */ },
-                    onAddToAlbum = { /* TODO */ },
+                    onAddToQueue = { onAddToQueue(song) },
+                    onAddToPlaylist = { onAddToPlaylist(song) },
+                    onAddToAlbum = { onAddToPlaylist(song) },
                     onRemoveClick = { onRemoveRecentSearch(song) }
                 )
             }

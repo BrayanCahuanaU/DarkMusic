@@ -60,6 +60,13 @@ abstract class BaseMusicViewModel(
     }
 
     /**
+     * Agrega una canción al final de la cola actual.
+     */
+    open fun addToQueue(song: Song) {
+        musicServiceConnection.addSongsToQueue(listOf(song))
+    }
+
+    /**
      * Descarga una canción para reproducción offline.
      */
     open fun downloadSong(song: Song, onDownloadStatusChange: (Boolean) -> Unit = {}) {

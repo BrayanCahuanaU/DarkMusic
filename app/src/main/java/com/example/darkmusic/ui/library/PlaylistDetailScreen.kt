@@ -117,6 +117,7 @@ fun PlaylistDetailScreen(
                         },
                         onFavoriteClick = { viewModel.toggleFavorite(song) },
                         onDownloadClick = { viewModel.downloadSong(song) },
+                        onAddToQueue = { viewModel.addToQueue(song) },
                         onAddToPlaylist = { /* Ya está en la playlist */ },
                         onAddToAlbum = { /* Ya está en la playlist */ },
                         onRemoveClick = { viewModel.removeSongFromPlaylist(song.id) }

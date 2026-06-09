@@ -33,6 +33,9 @@ class PlayerViewModel @Inject constructor(
     /** Duración total de la canción actual en milisegundos. */
     val duration = musicServiceConnection.duration
 
+    /** Lista actual de canciones en la cola. */
+    val currentQueue = musicServiceConnection.currentQueue
+
     /** Flujo para exponer errores globales del servicio a la UI. */
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
@@ -68,5 +71,20 @@ class PlayerViewModel @Inject constructor(
     /** Regresa a la canción anterior en la lista de reproducción. */
     fun skipPrevious() {
         musicServiceConnection.skipToPrevious()
+    }
+
+    /** Elimina una canción de la cola. */
+    fun removeFromQueue(songId: String) {
+        musicServiceConnection.removeSongsFromQueue(listOf(songId))
+    }
+
+    /** Mueve una canción de una posición a otra en la cola. */
+    fun moveInQueue(fromIndex: Int, toIndex: Int) {
+        musicServiceConnection.moveSongInQueue(fromIndex, toIndex)
+    }
+
+    /** Agrega una canción al final de la cola. */
+    override fun addToQueue(song: Song) {
+        musicServiceConnection.addSongsToQueue(listOf(song))
     }
 }

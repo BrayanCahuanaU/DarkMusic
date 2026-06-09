@@ -140,6 +140,7 @@ fun LibraryScreen(
                         },
                         onFavoriteClick = { viewModel.toggleFavorite(song) },
                         onDownloadClick = { viewModel.downloadSong(song) },
+                        onAddToQueue = { viewModel.addToQueue(song) },
                         onAddToPlaylist = { songToAddToPlaylist = song },
                         onAddToAlbum = { songToAddToPlaylist = song },
                         isDownloading = state.downloadingSongIds.contains(song.id)

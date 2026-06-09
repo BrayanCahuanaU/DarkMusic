@@ -105,6 +105,7 @@ dependencies {
 
 
     implementation("org.json:json:20231013")
+    implementation("sh.calvin.reorderable:reorderable:2.4.2")
 }
 
 // This safely targets all Kotlin tasks and fixes your jvmTarget error
