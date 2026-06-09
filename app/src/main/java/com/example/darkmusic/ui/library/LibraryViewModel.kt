@@ -1,8 +1,10 @@
 package com.example.darkmusic.ui.library
 
 import androidx.lifecycle.viewModelScope
+import com.example.darkmusic.domain.model.Playlist
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.domain.repository.MusicRepository
+import com.example.darkmusic.domain.repository.PlaylistRepository
 import com.example.darkmusic.playback.manager.MusicServiceConnection
 import com.example.darkmusic.ui.common.BaseMusicViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,23 +15,19 @@ import javax.inject.Inject
 data class LibraryState(
     val favoriteSongs: List<Song> = emptyList(),
     val allSongs: List<Song> = emptyList(),
-    val albums: List<AlbumItem> = emptyList(),
+    val playlists: List<Playlist> = emptyList(),
     val downloadingSongIds: Set<String> = emptySet(), // Rastrear qué canciones se están descargando
     val isLoading: Boolean = false,
     val error: String? = null,
     val isAuthenticated: Boolean = false
 )
 
-data class AlbumItem(
-    val name: String,
-    val artist: String,
-    val coverUrl: String?,
-    val songCount: Int
-)
+// Eliminamos AlbumItem ya que unificamos con Playlist
 
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     repository: MusicRepository,
+    private val playlistRepository: PlaylistRepository,
     musicServiceConnection: MusicServiceConnection
 ) : BaseMusicViewModel(repository, musicServiceConnection) {
 
@@ -46,35 +44,13 @@ class LibraryViewModel @Inject constructor(
             
             combine(
                 repository.getFavoriteSongs(),
-                repository.getAllSongs()
-            ) { favorites, allSongs ->
-                val downloadedSongs = allSongs.filter { it.isDownloaded }
-                
-                val groupedAlbums = allSongs
-                    .filter { it.album != null && it.album != "Offline" }
-                    .groupBy { it.album }
-                    .map { (albumName, songs) ->
-                        AlbumItem(
-                            name = albumName ?: "Unknown Album",
-                            artist = songs.firstOrNull()?.artist ?: "Unknown Artist",
-                            coverUrl = songs.firstOrNull { it.coverUrl != null }?.coverUrl,
-                            songCount = songs.size
-                        )
-                    }.toMutableList()
-
-                if (downloadedSongs.isNotEmpty()) {
-                    groupedAlbums.add(0, AlbumItem(
-                        name = "Offline",
-                        artist = "Música local",
-                        coverUrl = null,
-                        songCount = downloadedSongs.size
-                    ))
-                }
-                
+                repository.getAllSongs(),
+                playlistRepository.getPlaylists()
+            ) { favorites, allSongs, playlists ->
                 _state.value.copy(
                     favoriteSongs = favorites,
                     allSongs = allSongs,
-                    albums = groupedAlbums,
+                    playlists = playlists,
                     isLoading = false
                 )
             }.catch { e ->
@@ -83,7 +59,7 @@ class LibraryViewModel @Inject constructor(
                 _state.update { it.copy(
                     favoriteSongs = newState.favoriteSongs,
                     allSongs = newState.allSongs,
-                    albums = newState.albums,
+                    playlists = newState.playlists,
                     isLoading = false
                 ) }
             }
@@ -104,7 +80,33 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    fun addToPlaylist(song: Song) { /* TODO */ }
-    fun addToAlbum(song: Song) { /* TODO */ }
+    fun createPlaylist(name: String) {
+        viewModelScope.launch {
+            playlistRepository.createPlaylist(name)
+        }
+    }
+
+    fun deletePlaylist(playlist: Playlist) {
+        viewModelScope.launch {
+            playlistRepository.deletePlaylist(playlist)
+        }
+    }
+
+    fun renamePlaylist(playlistId: Long, newName: String) {
+        viewModelScope.launch {
+            playlistRepository.renamePlaylist(playlistId, newName)
+        }
+    }
+
+    fun addToPlaylist(song: Song, playlistId: Long) {
+        viewModelScope.launch {
+            playlistRepository.addSongToPlaylist(playlistId, song)
+        }
+    }
+
+    fun addToAlbum(song: Song) {
+        // Redirigimos a addToPlaylist ya que son lo mismo
+        // En el UI, esto abrirá el mismo diálogo
+    }
     fun signInWithSupabase() { /* TODO */ }
 }

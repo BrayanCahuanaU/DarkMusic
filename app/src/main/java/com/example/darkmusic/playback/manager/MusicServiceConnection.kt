@@ -234,6 +234,35 @@ class MusicServiceConnection @Inject constructor(
         _player.value?.seekToPrevious()
     }
 
+    fun addSongsToQueue(songs: List<Song>) {
+        val player = _player.value ?: return
+        scope.launch {
+            val mediaItems = songs.map { song ->
+                MediaItem.Builder()
+                    .setMediaId(song.id)
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(song.title)
+                            .setArtist(song.artist)
+                            .apply {
+                                song.coverUrl?.takeIf { it.isNotEmpty() }
+                                    ?.let { setArtworkUri(android.net.Uri.parse(it)) }
+                            }
+                            .build()
+                    )
+                    .build()
+            }
+            player.addMediaItems(mediaItems)
+            currentQueue = currentQueue + songs
+            
+            // Si el reproductor estaba detenido, prepararlo y reproducir la primera canción añadida
+            if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
+                player.prepare()
+                player.play()
+            }
+        }
+    }
+
     fun release() {
         scope.cancel()
         controllerFuture?.let {

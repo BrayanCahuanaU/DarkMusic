@@ -7,4 +7,7 @@ sealed class Screen(val route: String) {
     object Search : Screen("search")
     object Player : Screen("player")
     object Offline : Screen("offline")
+    object PlaylistDetail : Screen("playlist_detail/{playlistId}") {
+        fun createRoute(playlistId: Long) = "playlist_detail/$playlistId"
+    }
 }

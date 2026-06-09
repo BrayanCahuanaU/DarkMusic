@@ -6,15 +6,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.darkmusic.core.designsystem.CanvasBlack
+import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.ui.components.SongItem
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,6 +25,7 @@ fun OfflineScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val downloadedSongs = state.allSongs.filter { it.isDownloaded }
+    var songToAddToPlaylist by remember { mutableStateOf<Song?>(null) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = CanvasBlack) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -58,13 +58,26 @@ fun OfflineScreen(
                             },
                             onFavoriteClick = { viewModel.toggleFavorite(song) },
                             onDownloadClick = { viewModel.downloadSong(song) },
-                            onAddToPlaylist = { viewModel.addToPlaylist(song) },
+                            onAddToPlaylist = { songToAddToPlaylist = song },
                             onAddToAlbum = { viewModel.addToAlbum(song) },
                             isDownloading = state.downloadingSongIds.contains(song.id)
                         )
                     }
                 }
             }
+        }
+
+        if (songToAddToPlaylist != null) {
+            AddToPlaylistDialog(
+                playlists = state.playlists,
+                onDismiss = { songToAddToPlaylist = null },
+                onPlaylistSelected = { playlist ->
+                    songToAddToPlaylist?.let { song ->
+                        viewModel.addToPlaylist(song, playlist.id)
+                    }
+                    songToAddToPlaylist = null
+                }
+            )
         }
     }
 }

@@ -25,6 +25,7 @@ import coil.compose.AsyncImage
 import com.example.darkmusic.core.designsystem.AppleMusicRed
 import com.example.darkmusic.core.designsystem.CanvasBlack
 import com.example.darkmusic.core.designsystem.LabelSecondaryDark
+import com.example.darkmusic.domain.model.Playlist
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.ui.components.SongItem
 import com.example.darkmusic.ui.home.SectionHeader
@@ -32,10 +33,14 @@ import com.example.darkmusic.ui.home.SectionHeader
 @Composable
 fun LibraryScreen(
     onOfflineClick: () -> Unit,
+    onPlaylistClick: (Playlist) -> Unit,
     onSongClick: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsState()
+    var showCreatePlaylistDialog by remember { mutableStateOf(false) }
+    var playlistToRename by remember { mutableStateOf<Playlist?>(null) }
+    var songToAddToPlaylist by remember { mutableStateOf<Song?>(null) }
 
     Surface(modifier = Modifier.fillMaxSize(), color = CanvasBlack) {
         LazyColumn(
@@ -86,25 +91,37 @@ fun LibraryScreen(
                 }
             }
 
-            // SECCIÓN: ÁLBUMES
+            // SECCIÓN: PLAYLISTS
             item {
-                SectionHeader("Álbumes")
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SectionHeader("Playlists")
+                    IconButton(onClick = { showCreatePlaylistDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "Crear Playlist", tint = AppleMusicRed)
+                    }
+                }
             }
 
-            if (state.albums.isNotEmpty()) {
-                items(state.albums) { album ->
-                    AlbumRow(
-                        album = album,
-                        onClick = {
-                            if (album.name == "Offline") {
-                                onOfflineClick()
-                            }
-                        }
+            // Item especial para música Offline
+            item {
+                OfflineRow(onClick = onOfflineClick)
+            }
+
+            if (state.playlists.isNotEmpty()) {
+                items(state.playlists) { playlist ->
+                    PlaylistRow(
+                        playlist = playlist,
+                        onClick = { onPlaylistClick(playlist) },
+                        onDeleteClick = { viewModel.deletePlaylist(playlist) },
+                        onRenameClick = { playlistToRename = playlist }
                     )
                 }
             } else {
                 item {
-                    EmptyLibrarySection("No se encontraron álbumes organizados.")
+                    EmptyLibrarySection("No has creado ninguna playlist aún.")
                 }
             }
 
@@ -123,14 +140,254 @@ fun LibraryScreen(
                         },
                         onFavoriteClick = { viewModel.toggleFavorite(song) },
                         onDownloadClick = { viewModel.downloadSong(song) },
-                        onAddToPlaylist = { viewModel.addToPlaylist(song) },
-                        onAddToAlbum = { viewModel.addToAlbum(song) },
+                        onAddToPlaylist = { songToAddToPlaylist = song },
+                        onAddToAlbum = { songToAddToPlaylist = song },
                         isDownloading = state.downloadingSongIds.contains(song.id)
                     )
                 }
             }
         }
+
+        if (showCreatePlaylistDialog) {
+            PlaylistNameDialog(
+                title = "Nueva Playlist",
+                onDismiss = { showCreatePlaylistDialog = false },
+                onConfirm = { name ->
+                    viewModel.createPlaylist(name)
+                    showCreatePlaylistDialog = false
+                }
+            )
+        }
+
+        if (playlistToRename != null) {
+            PlaylistNameDialog(
+                title = "Editar nombre",
+                initialName = playlistToRename?.name ?: "",
+                onDismiss = { playlistToRename = null },
+                onConfirm = { newName ->
+                    playlistToRename?.let { viewModel.renamePlaylist(it.id, newName) }
+                    playlistToRename = null
+                }
+            )
+        }
+
+        if (songToAddToPlaylist != null) {
+            AddToPlaylistDialog(
+                playlists = state.playlists,
+                onDismiss = { songToAddToPlaylist = null },
+                onPlaylistSelected = { playlist ->
+                    songToAddToPlaylist?.let { song ->
+                        viewModel.addToPlaylist(song, playlist.id)
+                    }
+                    songToAddToPlaylist = null
+                }
+            )
+        }
     }
+}
+
+@Composable
+fun OfflineRow(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(AppleMusicRed.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.DownloadForOffline,
+                contentDescription = null,
+                tint = AppleMusicRed,
+                modifier = Modifier.size(32.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column {
+            Text(
+                text = "Música Offline",
+                color = AppleMusicRed,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "Canciones descargadas",
+                color = LabelSecondaryDark,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun PlaylistRow(
+    playlist: Playlist, 
+    onClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onRenameClick: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color.DarkGray),
+            contentAlignment = Alignment.Center
+        ) {
+            if (playlist.songs.isNotEmpty()) {
+                AsyncImage(
+                    model = playlist.songs.first().coverUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = null,
+                    tint = Color.Gray,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = playlist.name,
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "${playlist.songs.size} canciones",
+                color = LabelSecondaryDark,
+                fontSize = 14.sp
+            )
+        }
+
+        Box {
+            IconButton(onClick = { showMenu = true }) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Opciones", tint = Color.White)
+            }
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Editar nombre") },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                    onClick = {
+                        onRenameClick()
+                        showMenu = false
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Eliminar playlist", color = Color.Red) },
+                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) },
+                    onClick = {
+                        onDeleteClick()
+                        showMenu = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun PlaylistNameDialog(
+    title: String,
+    initialName: String = "",
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            TextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = { Text("Nombre de la playlist") },
+                singleLine = true,
+                colors = TextFieldDefaults.colors(
+                    focusedTextColor = Color.Black,
+                    unfocusedTextColor = Color.Black
+                )
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (name.isNotBlank()) onConfirm(name) },
+                enabled = name.isNotBlank()
+            ) {
+                Text("Aceptar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun CreatePlaylistDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
+    // Ya no se usa, reemplazado por PlaylistNameDialog
+}
+
+@Composable
+fun AddToPlaylistDialog(
+    playlists: List<Playlist>,
+    onDismiss: () -> Unit,
+    onPlaylistSelected: (Playlist) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Añadir a Playlist") },
+        text = {
+            if (playlists.isEmpty()) {
+                Text("No tienes playlists. Crea una primero.")
+            } else {
+                LazyColumn {
+                    items(playlists) { playlist ->
+                        Text(
+                            text = playlist.name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPlaylistSelected(playlist) }
+                                .padding(vertical = 12.dp),
+                            fontSize = 16.sp,
+                            color = Color.Black
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        }
+    )
 }
 
 @Composable
@@ -161,55 +418,6 @@ fun FavoriteSongCard(song: Song, onClick: () -> Unit) {
             maxLines = 1,
             fontSize = 12.sp
         )
-    }
-}
-
-@Composable
-fun AlbumRow(album: AlbumItem, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(60.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(if (album.name == "Offline") AppleMusicRed.copy(alpha = 0.1f) else Color.Transparent),
-            contentAlignment = Alignment.Center
-        ) {
-            if (album.name == "Offline") {
-                Icon(
-                    imageVector = Icons.Default.DownloadForOffline,
-                    contentDescription = null,
-                    tint = AppleMusicRed,
-                    modifier = Modifier.size(32.dp)
-                )
-            } else {
-                AsyncImage(
-                    model = album.coverUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            }
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column {
-            Text(
-                text = album.name,
-                color = if (album.name == "Offline") AppleMusicRed else Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = "${album.artist} • ${album.songCount} canciones",
-                color = LabelSecondaryDark,
-                fontSize = 14.sp
-            )
-        }
     }
 }
 

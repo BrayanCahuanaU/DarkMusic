@@ -21,13 +21,16 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.*
+import androidx.navigation.navArgument
 import coil.compose.AsyncImage
 import com.example.darkmusic.core.designsystem.*
 import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.ui.home.HomeScreen
 import com.example.darkmusic.ui.library.LibraryScreen
 import com.example.darkmusic.ui.library.OfflineScreen
+import com.example.darkmusic.ui.library.PlaylistDetailScreen
 import com.example.darkmusic.ui.navigation.Screen
 import com.example.darkmusic.ui.player.PlayerScreen
 import com.example.darkmusic.ui.player.PlayerViewModel
@@ -119,8 +122,21 @@ fun MainScreen(
             composable(Screen.Library.route) { 
                 LibraryScreen(
                     onOfflineClick = { navController.navigate(Screen.Offline.route) },
+                    onPlaylistClick = { playlist -> 
+                        navController.navigate(Screen.PlaylistDetail.createRoute(playlist.id))
+                    },
                     onSongClick = { navController.navigate(Screen.Player.route) }
                 ) 
+            }
+            composable(
+                route = Screen.PlaylistDetail.route,
+                arguments = listOf(navArgument("playlistId") { type = NavType.LongType })
+            ) {
+                PlaylistDetailScreen(
+                    onBackClick = { navController.popBackStack() },
+                    onSongClick = { navController.navigate(Screen.Player.route) },
+                    onAddSongsClick = { navController.navigate(Screen.Search.route) }
+                )
             }
             composable(Screen.Offline.route) {
                 OfflineScreen(
