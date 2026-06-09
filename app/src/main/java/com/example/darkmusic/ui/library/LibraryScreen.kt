@@ -27,6 +27,7 @@ import com.example.darkmusic.core.designsystem.CanvasBlack
 import com.example.darkmusic.core.designsystem.LabelSecondaryDark
 import com.example.darkmusic.domain.model.Playlist
 import com.example.darkmusic.domain.model.Song
+import com.example.darkmusic.ui.components.AddToPlaylistDialog
 import com.example.darkmusic.ui.components.SongItem
 import com.example.darkmusic.ui.home.SectionHeader
 
@@ -352,43 +353,6 @@ fun PlaylistNameDialog(
 @Composable
 fun CreatePlaylistDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
     // Ya no se usa, reemplazado por PlaylistNameDialog
-}
-
-@Composable
-fun AddToPlaylistDialog(
-    playlists: List<Playlist>,
-    onDismiss: () -> Unit,
-    onPlaylistSelected: (Playlist) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Añadir a Playlist") },
-        text = {
-            if (playlists.isEmpty()) {
-                Text("No tienes playlists. Crea una primero.")
-            } else {
-                LazyColumn {
-                    items(playlists) { playlist ->
-                        Text(
-                            text = playlist.name,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onPlaylistSelected(playlist) }
-                                .padding(vertical = 12.dp),
-                            fontSize = 16.sp,
-                            color = Color.Black
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cerrar")
-            }
-        }
-    )
 }
 
 @Composable

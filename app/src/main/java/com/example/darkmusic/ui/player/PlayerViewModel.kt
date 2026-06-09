@@ -7,6 +7,7 @@ import com.example.darkmusic.playback.manager.MusicServiceConnection
 import com.example.darkmusic.ui.common.BaseMusicViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -15,7 +16,8 @@ import javax.inject.Inject
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     musicServiceConnection: MusicServiceConnection,
-    repository: MusicRepository
+    repository: MusicRepository,
+    private val playlistRepository: com.example.darkmusic.domain.repository.PlaylistRepository
 ) : BaseMusicViewModel(repository, musicServiceConnection) {
 
     /** Información de la canción que se está reproduciendo actualmente. */
@@ -35,6 +37,9 @@ class PlayerViewModel @Inject constructor(
 
     /** Lista actual de canciones en la cola. */
     val currentQueue = musicServiceConnection.currentQueue
+
+    val playlists = playlistRepository.getPlaylists()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Flujo para exponer errores globales del servicio a la UI. */
     private val _error = MutableStateFlow<String?>(null)
@@ -86,5 +91,11 @@ class PlayerViewModel @Inject constructor(
     /** Agrega una canción al final de la cola. */
     override fun addToQueue(song: Song) {
         musicServiceConnection.addSongsToQueue(listOf(song))
+    }
+
+    fun addToPlaylist(song: Song, playlistId: Long) {
+        viewModelScope.launch {
+            playlistRepository.addSongToPlaylist(playlistId, song)
+        }
     }
 }

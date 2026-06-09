@@ -20,6 +20,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.darkmusic.core.designsystem.CanvasBlack
 import com.example.darkmusic.core.designsystem.LabelSecondaryDark
 import com.example.darkmusic.core.designsystem.Surface1Dark
+import com.example.darkmusic.ui.components.AddToPlaylistDialog
 import com.example.darkmusic.ui.components.SongItem
 
 @Composable
@@ -102,7 +103,7 @@ fun SearchScreen(
         }
 
         if (songToAddToPlaylist != null) {
-            com.example.darkmusic.ui.library.AddToPlaylistDialog(
+            AddToPlaylistDialog(
                 playlists = playlists,
                 onDismiss = { songToAddToPlaylist = null },
                 onPlaylistSelected = { playlist ->

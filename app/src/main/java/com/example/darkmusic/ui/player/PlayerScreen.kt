@@ -1,5 +1,6 @@
 package com.example.darkmusic.ui.player
 
+import android.content.Intent
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -26,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.darkmusic.core.designsystem.*
 import com.example.darkmusic.domain.model.Song
+import com.example.darkmusic.ui.components.AddToPlaylistDialog
 import java.util.concurrent.TimeUnit
 import java.util.Locale
 import sh.calvin.reorderable.ReorderableItem
@@ -42,10 +45,15 @@ fun PlayerScreen(
     val duration by viewModel.duration.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val currentQueue by viewModel.currentQueue.collectAsState()
+    val playlists by viewModel.playlists.collectAsState()
     val error by viewModel.error.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     
     var showQueueSheet by remember { mutableStateOf(false) }
+    var showMoreOptionsSheet by remember { mutableStateOf(false) }
+    var showAddToPlaylistDialog by remember { mutableStateOf(false) }
+    
+    val context = LocalContext.current
 
     LaunchedEffect(error) {
         error?.let {
@@ -214,8 +222,8 @@ fun PlayerScreen(
                 IconButton(onClick = { showQueueSheet = true }) {
                     Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = "Ver cola", tint = if (showQueueSheet) Color.White else LabelSecondaryDark)
                 }
-                IconButton(onClick = { /* Más opciones */ }) {
-                    Icon(Icons.Default.MoreHoriz, contentDescription = "Más", tint = LabelSecondaryDark)
+                IconButton(onClick = { showMoreOptionsSheet = true }) {
+                    Icon(Icons.Default.MoreHoriz, contentDescription = "Más", tint = if (showMoreOptionsSheet) Color.White else LabelSecondaryDark)
                 }
             }
         }
@@ -236,6 +244,116 @@ fun PlayerScreen(
                     }
                 )
             }
+        }
+
+        if (showMoreOptionsSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showMoreOptionsSheet = false },
+                containerColor = Surface1Dark,
+                dragHandle = { BottomSheetDefaults.DragHandle(color = Color.White.copy(alpha = 0.3f)) }
+            ) {
+                MoreOptionsContent(
+                    song = currentSong,
+                    onAddToPlaylist = { showAddToPlaylistDialog = true },
+                    onShare = { 
+                        currentSong?.let { song ->
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "Escucha esta canción: ${song.title}")
+                                putExtra(Intent.EXTRA_TEXT, "Te comparto esta canción de ${song.artist}: ${song.mediaUrl}")
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Compartir canción"))
+                        }
+                    },
+                    onDismiss = { showMoreOptionsSheet = false }
+                )
+            }
+        }
+
+        if (showAddToPlaylistDialog) {
+            AddToPlaylistDialog(
+                playlists = playlists,
+                onDismiss = { showAddToPlaylistDialog = false },
+                onPlaylistSelected = { playlist ->
+                    currentSong?.let { viewModel.addToPlaylist(it, playlist.id) }
+                    showAddToPlaylistDialog = false
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun MoreOptionsContent(
+    song: Song?,
+    onAddToPlaylist: () -> Unit,
+    onShare: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 32.dp)
+    ) {
+        if (song != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = song.coverUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(60.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = song.title,
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = song.artist,
+                        color = LabelSecondaryDark,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+            
+            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+            
+            ListItem(
+                headlineContent = { Text("Añadir a una lista...") },
+                leadingContent = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent, headlineColor = Color.White, leadingIconColor = Color.White),
+                modifier = Modifier.clickable { 
+                    onAddToPlaylist()
+                    onDismiss()
+                }
+            )
+            ListItem(
+                headlineContent = { Text("Compartir canción") },
+                leadingContent = { Icon(Icons.Default.Share, contentDescription = null) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent, headlineColor = Color.White, leadingIconColor = Color.White),
+                modifier = Modifier.clickable { 
+                    onShare()
+                    onDismiss()
+                }
+            )
+            ListItem(
+                headlineContent = { Text("Información de la canción") },
+                leadingContent = { Icon(Icons.Default.Info, contentDescription = null) },
+                colors = ListItemDefaults.colors(containerColor = Color.Transparent, headlineColor = Color.White, leadingIconColor = Color.White),
+                modifier = Modifier.clickable { onDismiss() }
+            )
         }
     }
 }

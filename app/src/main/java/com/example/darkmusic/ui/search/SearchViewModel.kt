@@ -90,7 +90,8 @@ class SearchViewModel @Inject constructor(
             // Add to search history
             repository.addSongToHistory(song)
             // Proceder con la reproducción usando la lógica base
-            super.onSongClick(song, _state.value.searchResults)
+            // Al hacer click desde búsqueda, solo queremos reproducir esa canción
+            super.onSongClick(song, listOf(song))
         }
     }
 

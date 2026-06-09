@@ -32,19 +32,8 @@ class MusicService : MediaSessionService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: List<MediaItem>
         ): ListenableFuture<List<MediaItem>> {
-            // Solo retornar items que tienen URI configurada
-            // Los items sin URI son placeholders de la cola que se resuelven después
-            val resolvedItems = mediaItems.map { item ->
-                if (item.localConfiguration?.uri != null) {
-                    item
-                } else {
-                    // Retornar con requestMetadata para que ExoPlayer no explote
-                    item.buildUpon()
-                        .setUri(android.net.Uri.EMPTY)
-                        .build()
-                }
-            }
-            return Futures.immediateFuture(resolvedItems)
+            // Solo retornar items tal cual. MusicServiceConnection se encarga de resolver URIs.
+            return Futures.immediateFuture(mediaItems)
         }
 
         @OptIn(UnstableApi::class)

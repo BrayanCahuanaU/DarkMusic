@@ -56,6 +56,11 @@ abstract class BaseMusicViewModel(
             val fullInfo = if (song.genre == null) repository.getFullSongInfo(song.id) else song
             val updatedSong = (fullInfo ?: song).copy(isFavorite = !song.isFavorite)
             repository.insertSong(updatedSong)
+            try {
+                musicServiceConnection.updateSongMetadata(updatedSong)
+            } catch (e: Exception) {
+                // Ignorar si la actualización local falla
+            }
         }
     }
 

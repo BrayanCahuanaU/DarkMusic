@@ -23,6 +23,7 @@ interface MusicRepository {
     suspend fun downloadSong(song: Song): Boolean
     suspend fun getSongsByGenre(genre: String): List<Song>
     suspend fun getFullSongInfo(songId: String): Song?
+    suspend fun getRelatedSongs(songId: String): List<Song>
 
     // Search History
     fun getRecentSearches(): Flow<List<Song>>

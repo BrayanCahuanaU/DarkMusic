@@ -210,6 +210,22 @@ class MusicRepositoryImpl @Inject constructor(
     override suspend fun getTrendingSongs() = searchSongs("Top music hits world 2024")
     override suspend fun getSongsByGenre(genre: String) = searchSongs("$genre music hits")
 
+    override suspend fun getRelatedSongs(songId: String): List<Song> = withContext(Dispatchers.IO) {
+        try {
+            val cleanId = extractCleanVideoId(songId)
+            val url = normalizeToYouTubeUrl(cleanId)
+            val linkHandler = youtube.streamLHFactory.fromUrl(url)
+            val extractor = youtube.getStreamExtractor(linkHandler)
+            extractor.fetchPage()
+            
+            val info = StreamInfo.getInfo(extractor)
+            mapInfoItems(info.relatedItems)
+        } catch (e: Exception) {
+            Log.e("MusicRepository", "Error getting related songs for $songId", e)
+            emptyList()
+        }
+    }
+
     override suspend fun searchSongs(query: String) = withContext(Dispatchers.IO) {
         try {
             val extractor = youtube.getSearchExtractor(query)
@@ -275,17 +291,63 @@ class MusicRepositoryImpl @Inject constructor(
         recentSearchDao.clearHistory()
     }
 
-    private fun mapInfoItems(items: List<InfoItem>) =
-        items.filterIsInstance<StreamInfoItem>().map { item ->
-            Song(
+    private fun mapInfoItems(items: List<InfoItem>): List<Song> {
+        val deduplicated = mutableMapOf<String, Song>()
+
+        items.filterIsInstance<StreamInfoItem>().forEach { item ->
+            val title = item.name
+            val artist = item.uploaderName ?: "Desconocido"
+            
+            // Clave canónica: Título y artista normalizados (minúsculas, sin espacios extra)
+            val canonicalKey = "${title.lowercase().trim()} - ${artist.lowercase().trim()}"
+            
+            val newSong = Song(
                 id = item.url,
-                title = item.name,
-                artist = item.uploaderName ?: "Desconocido",
+                title = title,
+                artist = artist,
                 album = null,
                 genre = null,
                 durationMs = item.duration * 1000L,
                 coverUrl = item.thumbnails.maxByOrNull { it.width * it.height }?.url,
                 mediaUrl = item.url
             )
+
+            val existing = deduplicated[canonicalKey]
+            if (existing == null || isBetterResult(newSong, existing)) {
+                deduplicated[canonicalKey] = newSong
+            }
         }
+        
+        return deduplicated.values.toList()
+    }
+
+    /**
+     * Determina si la nueva canción es un "mejor" resultado que la existente.
+     * Prioriza canales oficiales, VEVO, o nombres de canales que sugieren ser el autor original.
+     */
+    private fun isBetterResult(new: Song, existing: Song): Boolean {
+        val officialKeywords = listOf("official", "vevo", "topic", "disquera", "records", "music video")
+        
+        val newScore = calculateScore(new, officialKeywords)
+        val existingScore = calculateScore(existing, officialKeywords)
+        
+        return newScore > existingScore
+    }
+
+    private fun calculateScore(song: Song, keywords: List<String>): Int {
+        var score = 0
+        val textToSearch = "${song.title} ${song.artist}".lowercase()
+        
+        for (keyword in keywords) {
+            if (textToSearch.contains(keyword)) score++
+        }
+        
+        // Bonus si el artista NO contiene "lyrics", "cover", "karaoke", "remix" (a menos que el original sea un remix)
+        val negativeKeywords = listOf("lyrics", "cover", "karaoke", "fan video", "remix")
+        for (keyword in negativeKeywords) {
+            if (song.artist.lowercase().contains(keyword)) score--
+        }
+        
+        return score
+    }
 }

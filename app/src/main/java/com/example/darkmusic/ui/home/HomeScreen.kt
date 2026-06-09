@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.example.darkmusic.domain.model.Song
+import com.example.darkmusic.ui.components.AddToPlaylistDialog
 import com.example.darkmusic.ui.components.SongItem
 
 @Composable
@@ -143,7 +144,7 @@ fun HomeScreen(
         }
 
         if (songToAddToPlaylist != null) {
-            com.example.darkmusic.ui.library.AddToPlaylistDialog(
+            AddToPlaylistDialog(
                 playlists = playlists,
                 onDismiss = { songToAddToPlaylist = null },
                 onPlaylistSelected = { playlist ->
