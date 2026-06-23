@@ -31,6 +31,7 @@ import com.example.darkmusic.ui.home.HomeScreen
 import com.example.darkmusic.ui.library.LibraryScreen
 import com.example.darkmusic.ui.library.OfflineScreen
 import com.example.darkmusic.ui.library.PlaylistDetailScreen
+import com.example.darkmusic.ui.settings.SettingsScreen
 import com.example.darkmusic.ui.navigation.Screen
 import com.example.darkmusic.ui.player.PlayerScreen
 import com.example.darkmusic.ui.player.PlayerViewModel
@@ -53,7 +54,7 @@ fun MainScreen(
     // Definición de los elementos de navegación de la barra inferior
     val items = listOf(
         NavigationItem("Escuchar", Screen.Home.route, Icons.Default.Home),
-        NavigationItem("Novedades", Screen.New.route, Icons.Default.MusicNote),
+        NavigationItem("Ajustes", Screen.Settings.route, Icons.Default.Settings),
         NavigationItem("Biblioteca", Screen.Library.route, Icons.Default.LibraryMusic),
         NavigationItem("Buscar", Screen.Search.route, Icons.Default.Search)
     )
@@ -62,15 +63,17 @@ fun MainScreen(
         bottomBar = {
             if (currentRoute != Screen.Player.route) {
                 Column {
-                    // Mini Reproductor
-                    if (currentSong != null) {
-                        MiniPlayer(
-                            song = currentSong!!,
-                            isPlaying = isPlaying,
-                            onPlayPause = { playerViewModel.playPause() },
-                            onClick = { navController.navigate(Screen.Player.route) }
-                        )
-                    }
+    // Mini Reproductor
+    val currentSongValue = currentSong
+    if (currentSongValue != null) {
+        MiniPlayer(
+            song = currentSongValue,
+            isPlaying = isPlaying,
+            onPlayPause = { playerViewModel.playPause() },
+            onClick = { navController.navigate(Screen.Player.route) },
+            onNext = { playerViewModel.skipNext() }
+        )
+    }
 
                     // Barra de navegación inferior
                     NavigationBar(
@@ -118,7 +121,7 @@ fun MainScreen(
             composable(Screen.Home.route) { 
                 HomeScreen(onSongClick = { navController.navigate(Screen.Player.route) }) 
             }
-            composable(Screen.New.route) { PlaceholderScreen("Novedades") }
+            composable(Screen.Settings.route) { SettingsScreen() }
             composable(Screen.Library.route) { 
                 LibraryScreen(
                     onOfflineClick = { navController.navigate(Screen.Offline.route) },
@@ -157,7 +160,8 @@ fun MiniPlayer(
     song: Song,
     isPlaying: Boolean,
     onPlayPause: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onNext: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -200,7 +204,7 @@ fun MiniPlayer(
                 tint = Color.White
             )
         }
-        IconButton(onClick = { /* Siguiente */ }) {
+        IconButton(onClick = onNext) {
             Icon(Icons.Default.SkipNext, contentDescription = null, tint = Color.White)
         }
     }

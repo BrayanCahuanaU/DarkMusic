@@ -52,13 +52,20 @@ class MusicServiceConnection @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
+    // Mapa para rastrear y esperar resoluciones de URIs en curso
+    private val resolvingJobs = mutableMapOf<String, Deferred<Boolean>>()
+
     init {
         val sessionToken = SessionToken(context, ComponentName(context, MusicService::class.java))
         controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
         controllerFuture?.addListener({
             try {
-                val controller = controllerFuture?.get()
+                val controller = controllerFuture?.get() ?: return@addListener
                 _player.value = controller
+                
+                // Forzar modo repetición desactivado por defecto
+                controller.repeatMode = Player.REPEAT_MODE_OFF
+                
                 setupPlayerListener(controller)
             } catch (e: Exception) {
                 Log.e("MusicServiceConnection", "Error initializing MediaController", e)
@@ -75,45 +82,17 @@ class MusicServiceConnection @Inject constructor(
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                Log.d("MusicServiceConnection", "Transición detectada. Razón: $reason, MediaId: ${mediaItem?.mediaId}")
+
+                player.repeatMode = Player.REPEAT_MODE_OFF
+
                 mediaItem?.let { item ->
                     val song = _currentQueue.value.find { it.id == item.mediaId }
                     _currentSong.value = song
-
-                    // Pre-cargar el siguiente item de la cola
-                    val nextIndex = player.currentMediaItemIndex + 1
-                    if (nextIndex < player.mediaItemCount) {
-                        val nextItem = player.getMediaItemAt(nextIndex)
-                        val nextSong = _currentQueue.value.find { it.id == nextItem.mediaId }
-                        if (nextItem.localConfiguration?.uri == null && nextSong != null) {
-                            fetchAndSetUri(nextSong, player)
-                        }
-                    }
-
-                    // Si el item actual no tiene URI (se añadió sin resolver), intentar resolver y reproducir
-                    val currentIndex = player.currentMediaItemIndex
-                    if (currentIndex >= 0 && currentIndex < player.mediaItemCount) {
-                        val currentItem = player.getMediaItemAt(currentIndex)
-                        if (currentItem.localConfiguration?.uri == null) {
-                            val currentSong = _currentQueue.value.find { it.id == currentItem.mediaId }
-                            if (currentSong != null) {
-                                scope.launch {
-                                    val replaced = resolveAndReplaceMediaItem(currentSong, player)
-                                    if (replaced) {
-                                        try {
-                                            player.prepare()
-                                            player.play()
-                                        } catch (e: Exception) {
-                                            Log.e("MusicServiceConnection", "Error al reanudar reproducción después de reemplazar mediaItem", e)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
                 _duration.value = player.duration.coerceAtLeast(0L)
                 _currentPosition.value = 0L
-                
+
                 checkAndTriggerRecommendations(player)
             }
 
@@ -129,78 +108,99 @@ class MusicServiceConnection @Inject constructor(
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.e("MusicServiceConnection", "Player Error: ${error.errorCodeName} (${error.errorCode})", error)
+                
+                val player = _player.value ?: return
+                val failedMediaId = player.currentMediaItem?.mediaId ?: return
+                val song = _currentQueue.value.find { it.id == failedMediaId } ?: return
+                
+                // Intento de recuperación para errores de red o decodificador (URL expirada)
+                if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS || 
+                    error.errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE ||
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED) {
+                    
+                    scope.launch {
+                        _isLoading.value = true
+                        val replaced = resolveAndReplaceMediaItem(song, player)
+                        _isLoading.value = false
+                        if (replaced) {
+                            player.prepare()
+                            player.play()
+                        }
+                    }
+                }
             }
         })
     }
 
-        private fun fetchAndSetUri(song: Song, player: Player) {
-        scope.launch {
-            val streamUrl = if (song.isDownloaded && song.localPath != null) {
+    private fun buildMediaItem(song: Song, uri: String): MediaItem {
+        return MediaItem.Builder()
+            .setMediaId(song.id)
+            .setUri(uri)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(song.title)
+                    .setArtist(song.artist)
+                    .apply {
+                        song.coverUrl?.takeIf { it.isNotEmpty() }?.let { setArtworkUri(it.toUri()) }
+                    }
+                    .build()
+            )
+            .build()
+    }
+
+    private suspend fun resolveUri(song: Song): String? {
+        return withContext(Dispatchers.IO) {
+            if (song.isDownloaded && song.localPath != null) {
                 val file = java.io.File(song.localPath)
-                if (file.exists()) {
-                    "file://${song.localPath}" // Siempre usar el esquema file://
-                } else {
-                    null
-                }
+                if (file.exists()) "file://${song.localPath}" else null
             } else {
                 repository.getStreamUrl(extractVideoId(song.id))
-            }
-
-            streamUrl?.let { uri ->
-                // Encontrar el índice del elemento de medios con el ID de la canción coincidente
-                val index = (0 until player.mediaItemCount).firstOrNull { i ->
-                    player.getMediaItemAt(i).mediaId == song.id
-                }
-
-                index?.let { mediaIndex ->
-                    val currentItem = player.getMediaItemAt(mediaIndex)
-                    val updatedItem = currentItem.buildUpon()
-                        .setUri(uri.toUri())
-                        .build()
-
-                    player.replaceMediaItem(mediaIndex, updatedItem)
-                }
             }
         }
     }
 
     private suspend fun resolveAndReplaceMediaItem(song: Song, player: Player): Boolean {
+        // Si ya hay una resolución en curso para esta canción, esperar a que termine
+        resolvingJobs[song.id]?.let { return it.await() }
 
-        // IO solamente para resolver stream
-        val streamUrl = withContext(Dispatchers.IO) {
-
-            if (song.isDownloaded && song.localPath != null) {
-                val file = java.io.File(song.localPath)
-
-                if (file.exists()) {
-                    "file://${song.localPath}"
-                } else {
-                    null
+        val deferred = scope.async(Dispatchers.Main) {
+            try {
+                // Obtener URL del stream en IO
+                val streamUrl = withContext(Dispatchers.IO) {
+                    if (song.isDownloaded && song.localPath != null) {
+                        val file = java.io.File(song.localPath)
+                        if (file.exists()) "file://${song.localPath}" else null
+                    } else {
+                        repository.getStreamUrl(extractVideoId(song.id))
+                    }
                 }
-            } else {
-                repository.getStreamUrl(extractVideoId(song.id))
+
+                if (streamUrl == null) return@async false
+
+                // Buscar el índice actual de la canción (podría haber cambiado)
+                val index = (0 until player.mediaItemCount).firstOrNull { i ->
+                    player.getMediaItemAt(i).mediaId == song.id
+                } ?: return@async false
+
+                val currentItem = player.getMediaItemAt(index)
+                val updatedItem = currentItem.buildUpon()
+                    .setUri(streamUrl.toUri())
+                    .build()
+
+                player.replaceMediaItem(index, updatedItem)
+                true
+            } catch (e: Exception) {
+                Log.e("MusicServiceConnection", "Error resolviendo canción ${song.id}", e)
+                false
+            } finally {
+                resolvingJobs.remove(song.id)
             }
         }
-
-        if (streamUrl == null) return false
-
-        // TODO lo relacionado a player/controller en Main
-        return withContext(Dispatchers.Main) {
-
-            val index = (0 until player.mediaItemCount).firstOrNull { i ->
-                player.getMediaItemAt(i).mediaId == song.id
-            } ?: return@withContext false
-
-            val updatedItem = player.getMediaItemAt(index)
-                .buildUpon()
-                .setUri(streamUrl.toUri())
-                .build()
-
-            player.replaceMediaItem(index, updatedItem)
-
-            true
-        }
+        
+        resolvingJobs[song.id] = deferred
+        return deferred.await()
     }
+
     private fun updatePlaybackPosition() {
         scope.launch {
             while (true) {
@@ -214,81 +214,55 @@ class MusicServiceConnection @Inject constructor(
         }
     }
 
-    /**
-     * Reproduce una canción y configura la lista completa como cola.
-     */
     fun playSong(selectedSong: Song, streamUrl: String, queue: List<Song> = emptyList()) {
         scope.launch {
-
-            // Bloquear canciones demasiado largas
             if (selectedSong.durationMs > MAX_DURATION_MS) {
-                _error.value = "La canción supera el límite de 7 minutos y no puede reproducirse."
+                _error.value = "La canción supera el límite de 7 minutos."
                 return@launch
             }
 
             _currentSong.value = selectedSong
-            
-            // Actualizar la cola actual para que onMediaItemTransition pueda encontrar las canciones
             val newQueue = if (queue.isNotEmpty()) queue.filter { it.durationMs <= MAX_DURATION_MS } else listOf(selectedSong)
-            _currentQueue.value = newQueue
 
-            val player = _player.value
-            if (player == null) {
-                Log.e("MusicServiceConnection", "Player is null")
-                return@launch
-            }
+            val player = _player.value ?: return@launch
 
-            val mediaMetadata = MediaMetadata.Builder()
-                .setTitle(selectedSong.title)
-                .setArtist(selectedSong.artist)
-                .apply {
-                    selectedSong.coverUrl?.takeIf { it.isNotEmpty() }?.let {
-                        setArtworkUri(it.toUri())
-                    }
+            _isLoading.value = true
+
+            // Construir MediaItem de la canción seleccionada (ya tiene URI)
+            val currentItem = buildMediaItem(selectedSong, streamUrl)
+
+            // Resolver URIs del resto de la cola en paralelo
+            val otherSongs = newQueue.filter { it.id != selectedSong.id }
+            val resolvedItems = if (otherSongs.isNotEmpty()) {
+                supervisorScope {
+                    otherSongs.map { song ->
+                        async {
+                            try {
+                                val uri = resolveUri(song)
+                                uri?.let { song to buildMediaItem(song, it) }
+                            } catch (e: Exception) {
+                                Log.e("MusicServiceConnection", "Error resolviendo URI para ${song.id}", e)
+                                null
+                            }
+                        }
+                    }.awaitAll().filterNotNull()
                 }
-                .build()
+            } else emptyList()
 
-            val mediaItem = MediaItem.Builder()
-                .setMediaId(selectedSong.id)
-                .setUri(streamUrl)
-                .setMediaMetadata(mediaMetadata)
-                .build()
+            _isLoading.value = false
 
-            player.setMediaItem(mediaItem)
-            
-            // Si hay cola, agregar los demás items (filtrados por duración)
-            if (newQueue.isNotEmpty()) {
-                val queueItems = newQueue.filter { it.id != selectedSong.id }.map { song ->
-                    MediaItem.Builder()
-                        .setMediaId(song.id)
-                        // Inicialmente sin URI; se cargarán cuando sea necesario en fetchAndSetUri
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(song.title)
-                                .setArtist(song.artist)
-                                .apply {
-                                    song.coverUrl?.takeIf { it.isNotEmpty() }?.let {
-                                        setArtworkUri(it.toUri())
-                                    }
-                                }
-                                .build()
-                        )
-                        .build()
-                }
-                player.addMediaItems(queueItems)
-            }
+            // Actualizar cola solo con canciones resueltas exitosamente
+            val resolvedSongs = listOf(selectedSong) + resolvedItems.map { it.first }
+            _currentQueue.value = resolvedSongs
 
-            // Pre-cargar el segundo item de la cola si existe
-            if (newQueue.size > 1) {
-                val nextSong = newQueue.first { it.id != selectedSong.id }
-                fetchAndSetUri(nextSong, player)
-            }
+            val allItems = listOf(currentItem) + resolvedItems.map { it.second }
+            if (allItems.isEmpty()) return@launch
 
+            player.setMediaItems(allItems)
             player.prepare()
             player.play()
         }
     }
-
 
     fun playPause() {
         _player.value?.let {
@@ -302,83 +276,37 @@ class MusicServiceConnection @Inject constructor(
 
     fun skipToNext() {
         val player = _player.value ?: return
-
-        scope.launch {
-            try {
-
-                val nextIndex = player.currentMediaItemIndex + 1
-
-                if (nextIndex < player.mediaItemCount) {
-
-                    val nextItem = player.getMediaItemAt(nextIndex)
-
-                    if (nextItem.localConfiguration?.uri == null) {
-
-                        val nextSong = _currentQueue.value
-                            .find { it.id == nextItem.mediaId }
-
-                        if (nextSong != null) {
-
-                            resolveAndReplaceMediaItem(nextSong, player)
-
-                        }
-                    }
-
-                    // mover inmediatamente
-                    player.seekTo(nextIndex, 0)
-                    player.playWhenReady = true
-                    player.prepare()
-
-                }
-
-            } catch (e: Exception) {
-
-                Log.e("MusicServiceConnection", "Error en skipToNext", e)
-
+        val nextIndex = player.currentMediaItemIndex + 1
+        if (nextIndex < player.mediaItemCount) {
+            scope.launch {
+                _isLoading.value = true
+                player.seekTo(nextIndex, 0)
+                player.prepare()
+                player.play()
+                _isLoading.value = false
             }
         }
     }
+
     fun skipToPrevious() {
         val player = _player.value ?: return
-
-        scope.launch {
-            try {
-                val prevIndex = player.currentMediaItemIndex - 1
-
-                if (prevIndex < 0) return@launch
-
-                val prevItem = player.getMediaItemAt(prevIndex)
-
-                if (prevItem.localConfiguration?.uri == null) {
-
-                    val prevSong = _currentQueue.value.find {
-                        it.id == prevItem.mediaId
-                    } ?: return@launch
-
-                    val resolved = resolveAndReplaceMediaItem(prevSong, player)
-
-                    if (!resolved) return@launch
-                }
-
-                withContext(Dispatchers.Main) {
-                    player.seekTo(prevIndex, 0)
-                    player.playWhenReady = true
-                    player.prepare()
-                }
-
-            } catch (e: Exception) {
-                Log.e("MusicServiceConnection", "Error en skipToPrevious", e)
+        val prevIndex = player.currentMediaItemIndex - 1
+        if (prevIndex >= 0) {
+            scope.launch {
+                _isLoading.value = true
+                player.seekTo(prevIndex, 0)
+                player.prepare()
+                player.play()
+                _isLoading.value = false
             }
         }
     }
 
     fun updateSongMetadata(updatedSong: Song) {
-        // Actualizar la cola actual
         val queue = _currentQueue.value
         if (queue.any { it.id == updatedSong.id }) {
             _currentQueue.value = queue.map { if (it.id == updatedSong.id) updatedSong else it }
         }
-        // Actualizar la canción actual si coincide
         if (_currentSong.value?.id == updatedSong.id) {
             _currentSong.value = updatedSong
         }
@@ -388,29 +316,30 @@ class MusicServiceConnection @Inject constructor(
         val player = _player.value ?: return
         scope.launch {
             val allowed = songs.filter { it.durationMs <= MAX_DURATION_MS }
-            if (allowed.size < songs.size) {
-                Log.d("MusicServiceConnection", "Skipped ${songs.size - allowed.size} items longer than 7 minutes")
+            if (allowed.isEmpty()) return@launch
+
+            val results = supervisorScope {
+                allowed.map { song ->
+                    async {
+                        try {
+                            val uri = resolveUri(song)
+                            uri?.let { song to buildMediaItem(song, it) }
+                        } catch (e: Exception) {
+                            Log.e("MusicServiceConnection", "Error resolviendo URI para ${song.id}", e)
+                            null
+                        }
+                    }
+                }.awaitAll().filterNotNull()
             }
 
-            val mediaItems = allowed.map { song ->
-                MediaItem.Builder()
-                    .setMediaId(song.id)
-                    .setMediaMetadata(
-                        MediaMetadata.Builder()
-                            .setTitle(song.title)
-                            .setArtist(song.artist)
-                            .apply {
-                                song.coverUrl?.takeIf { it.isNotEmpty() }
-                                    ?.let { setArtworkUri(it.toUri()) }
-                            }
-                            .build()
-                    )
-                    .build()
-            }
+            if (results.isEmpty()) return@launch
+
+            val addedSongs = results.map { it.first }
+            val mediaItems = results.map { it.second }
+
             player.addMediaItems(mediaItems)
-            _currentQueue.value += allowed
-            
-            // Si el reproductor estaba detenido, prepararlo y reproducir la primera canción añadida
+            _currentQueue.value += addedSongs
+
             if (player.playbackState == Player.STATE_IDLE || player.playbackState == Player.STATE_ENDED) {
                 player.prepare()
                 player.play()
@@ -427,7 +356,6 @@ class MusicServiceConnection @Inject constructor(
                     indicesToRemove.add(i)
                 }
             }
-            // Eliminar de atrás hacia adelante para no invalidar índices
             indicesToRemove.sortedDescending().forEach { index ->
                 player.removeMediaItem(index)
             }
@@ -450,7 +378,6 @@ class MusicServiceConnection @Inject constructor(
 
     private fun checkAndTriggerRecommendations(player: Player) {
         if (isFetchingRecommendations) return
-
         val remainingItems = player.mediaItemCount - player.currentMediaItemIndex - 1
         if (remainingItems <= 1) {
             scope.launch {
@@ -458,33 +385,15 @@ class MusicServiceConnection @Inject constructor(
                 try {
                     val currentQueue = _currentQueue.value
                     if (currentQueue.isEmpty()) return@launch
-
-                    // Tomar las últimas 2 canciones reproducidas o en reproducción
                     val currentIndex = player.currentMediaItemIndex
                     val lastSongs = mutableListOf<Song>()
-                    
-                    if (currentIndex >= 0 && currentIndex < currentQueue.size) {
-                        lastSongs.add(currentQueue[currentIndex])
-                    }
-                    if (currentIndex > 0 && currentIndex - 1 < currentQueue.size) {
-                        lastSongs.add(currentQueue[currentIndex - 1])
-                    }
+                    if (currentIndex >= 0 && currentIndex < currentQueue.size) lastSongs.add(currentQueue[currentIndex])
+                    if (currentIndex > 0 && currentIndex - 1 < currentQueue.size) lastSongs.add(currentQueue[currentIndex - 1])
 
                     if (lastSongs.isNotEmpty()) {
                         val recommendations = recommendationEngine.getRecommendations(lastSongs, currentQueue)
                         if (recommendations.isNotEmpty()) {
                             addSongsToQueue(recommendations)
-                            
-                            // Si acabamos de añadir recomendaciones porque la cola estaba vacía (o casi),
-                            // asegurarnos de resolver el URI de la siguiente inmediatamente.
-                            val nextIndex = player.currentMediaItemIndex + 1
-                            if (nextIndex < player.mediaItemCount) {
-                                val nextItem = player.getMediaItemAt(nextIndex)
-                                val nextSong = recommendations.find { it.id == nextItem.mediaId }
-                                if (nextItem.localConfiguration?.uri == null && nextSong != null) {
-                                    fetchAndSetUri(nextSong, player)
-                                }
-                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -498,73 +407,65 @@ class MusicServiceConnection @Inject constructor(
 
     fun release() {
         scope.cancel()
-        controllerFuture?.let {
-            MediaController.releaseFuture(it)
-        }
+        controllerFuture?.let { MediaController.releaseFuture(it) }
     }
 
-    private fun extractVideoId(url: String): String {
-        return repository.extractVideoId(url)
-    }
+    private fun extractVideoId(url: String): String = repository.extractVideoId(url)
 
     fun updateQueue(currentSong: Song, newQueue: List<Song>) {
         val player = _player.value ?: return
-        if (player.currentMediaItem?.mediaId == currentSong.id) {
-            // Filtrar canciones demasiado largas
-            val filteredQueue = newQueue.filter { it.durationMs <= MAX_DURATION_MS }
-            if (filteredQueue.size != newQueue.size) {
-                Log.d("MusicServiceConnection", "Removed ${newQueue.size - filteredQueue.size} items >7min from updated queue")
-            }
-            if (filteredQueue.none { it.id == currentSong.id }) return
+        if (player.currentMediaItem?.mediaId != currentSong.id) return
 
-            _currentQueue.value = filteredQueue
-            // No interrumpir el item actual, solo agregar los demás
-            val currentIndex = filteredQueue.indexOfFirst { it.id == currentSong.id }
-            if (currentIndex < 0) return
-            scope.launch {
-                val items = filteredQueue.mapIndexed { i, song ->
-                    MediaItem.Builder()
-                        .setMediaId(song.id)
-                        .setMediaMetadata(
-                            MediaMetadata.Builder()
-                                .setTitle(song.title)
-                                .setArtist(song.artist)
-                                .apply {
-                                    song.coverUrl?.takeIf { it.isNotEmpty() }
-                                        ?.let { setArtworkUri(it.toUri()) }
-                                }
-                                .build()
-                        )
-                        .build()
-                }
-                // Reemplazar todos excepto el actual que ya está reproduciéndose
-                val playerCurrentIndex = (0 until player.mediaItemCount)
-                    .firstOrNull { player.getMediaItemAt(it).mediaId == currentSong.id }
-                    ?: return@launch
-                
-                // Limpiar items anteriores y posteriores
-                if (player.mediaItemCount > 1) {
-                    // Primero removemos lo que hay después
-                    if (playerCurrentIndex + 1 < player.mediaItemCount) {
-                        player.removeMediaItems(playerCurrentIndex + 1, player.mediaItemCount)
-                    }
-                    // Luego removemos lo que hay antes
-                    if (playerCurrentIndex > 0) {
-                        player.removeMediaItems(0, playerCurrentIndex)
-                    }
-                }
+        val filteredQueue = newQueue.filter { it.durationMs <= MAX_DURATION_MS }
+        if (filteredQueue.none { it.id == currentSong.id }) return
 
-                // Ahora el item actual está en el índice 0 del player
-                // Agregamos lo que va antes
-                if (currentIndex > 0) {
-                    player.addMediaItems(0, items.take(currentIndex))
-                }
-                // Agregamos lo que va después
-                if (currentIndex + 1 < items.size) {
-                    player.addMediaItems(currentIndex + 1, items.drop(currentIndex + 1))
-                }
+        scope.launch {
+            val results = supervisorScope {
+                filteredQueue.map { song ->
+                    async {
+                        try {
+                            val uri = if (song.id == currentSong.id) {
+                                (0 until player.mediaItemCount)
+                                    .firstOrNull { player.getMediaItemAt(it).mediaId == song.id }
+                                    ?.let { player.getMediaItemAt(it).localConfiguration?.uri?.toString() }
+                                    ?: resolveUri(song)
+                            } else {
+                                resolveUri(song)
+                            }
+                            uri?.let { song to buildMediaItem(song, it) }
+                        } catch (e: Exception) {
+                            Log.e("MusicServiceConnection", "Error resolviendo URI para ${song.id}", e)
+                            null
+                        }
+                    }
+                }.awaitAll().filterNotNull()
             }
+
+            if (results.isEmpty()) return@launch
+
+            val addedSongs = results.map { it.first }
+            val mediaItems = results.map { it.second }
+
+            // Actualizar cola solo con canciones resueltas exitosamente
+            _currentQueue.value = addedSongs
+
+            val newCurrentIndex = addedSongs.indexOfFirst { it.id == currentSong.id }
+
+            val playerCurrentIndex = (0 until player.mediaItemCount)
+                .firstOrNull { player.getMediaItemAt(it).mediaId == currentSong.id }
+                ?: return@launch
+
+            if (player.mediaItemCount > 1) {
+                if (playerCurrentIndex + 1 < player.mediaItemCount)
+                    player.removeMediaItems(playerCurrentIndex + 1, player.mediaItemCount)
+                if (playerCurrentIndex > 0)
+                    player.removeMediaItems(0, playerCurrentIndex)
+            }
+
+            if (newCurrentIndex > 0)
+                player.addMediaItems(0, mediaItems.take(newCurrentIndex))
+            if (newCurrentIndex + 1 < mediaItems.size)
+                player.addMediaItems(newCurrentIndex + 1, mediaItems.drop(newCurrentIndex + 1))
         }
     }
-
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.example.darkmusic.domain.model.Song
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.example.darkmusic.core.preferences.SettingsManager
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -16,7 +17,8 @@ import kotlinx.coroutines.withContext
 @Singleton
 class MusicDownloader @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val client: OkHttpClient
+    private val client: OkHttpClient,
+    private val settingsManager: SettingsManager
 ) {
     suspend fun downloadSong(song: Song, url: String): String? = withContext(Dispatchers.IO) {
         try {
@@ -32,7 +34,7 @@ class MusicDownloader @Inject constructor(
                     return@withContext null
                 }
                 
-                val musicDir = File(context.getExternalFilesDir(null), "music")
+                val musicDir = File(settingsManager.getDownloadPath())
                 if (!musicDir.exists()) musicDir.mkdirs()
                 
                 // Sanitizar nombre de archivo
