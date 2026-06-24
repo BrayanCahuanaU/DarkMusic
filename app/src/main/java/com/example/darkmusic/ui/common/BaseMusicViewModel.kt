@@ -40,8 +40,12 @@ abstract class BaseMusicViewModel(
      */
     protected suspend fun resolveStreamUrl(song: Song): String? {
         return if (song.isDownloaded && song.localPath != null) {
-            val file = File(song.localPath)
-            if (file.exists()) "file://${song.localPath}" else repository.getStreamUrl(song.id)
+            if (song.localPath!!.startsWith("content://")) {
+                song.localPath
+            } else {
+                val file = File(song.localPath)
+                if (file.exists()) "file://${song.localPath}" else repository.getStreamUrl(song.id)
+            }
         } else {
             repository.getStreamUrl(song.id)
         }

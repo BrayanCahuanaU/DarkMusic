@@ -16,6 +16,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.example.darkmusic.core.network.RetryableHttpDataSource
+import com.example.darkmusic.core.preferences.SettingsManager
 import com.example.darkmusic.domain.repository.MusicRepository
 
 @Module
@@ -37,7 +38,8 @@ object PlaybackModule {
     fun providePlayer(
         @ApplicationContext context: Context,
         audioAttributes: AudioAttributes,
-        repository: MusicRepository
+        repository: MusicRepository,
+        settingsManager: SettingsManager
     ): Player {
         val httpDataSourceFactory = RetryableHttpDataSource.Factory(context, repository)
 
@@ -54,5 +56,8 @@ object PlaybackModule {
             .setHandleAudioBecomingNoisy(true)
             .setMediaSourceFactory(mediaSourceFactory)
             .build()
+            .also { player ->
+                player.setSkipSilenceEnabled(settingsManager.getSkipSilence())
+            }
     }
 }

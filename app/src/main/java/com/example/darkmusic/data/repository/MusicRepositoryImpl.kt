@@ -101,7 +101,7 @@ class MusicRepositoryImpl @Inject constructor(
                     return@withContext hls
                 }
 
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e("MusicRepository", "Error obteniendo stream", e)
                 null
             }
@@ -220,7 +220,7 @@ class MusicRepositoryImpl @Inject constructor(
             
             val info = StreamInfo.getInfo(extractor)
             mapInfoItems(info.relatedItems)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e("MusicRepository", "Error getting related songs for $songId", e)
             emptyList()
         }
@@ -231,7 +231,7 @@ class MusicRepositoryImpl @Inject constructor(
             val extractor = youtube.getSearchExtractor(query)
             extractor.fetchPage()
             mapInfoItems(extractor.initialPage.items)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e("MusicRepository", "Error buscando '$query'", e)
             emptyList()
         }
@@ -269,7 +269,7 @@ class MusicRepositoryImpl @Inject constructor(
                 coverUrl = info.thumbnails.maxByOrNull { it.width * it.height }?.url,
                 mediaUrl = url
             )
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.e("MusicRepository", "Error obteniendo info de $songId", e)
             null
         }

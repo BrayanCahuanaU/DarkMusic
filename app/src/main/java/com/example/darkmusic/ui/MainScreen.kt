@@ -1,15 +1,27 @@
 package com.example.darkmusic.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -100,8 +112,8 @@ fun MainScreen(
                                     }
                                 },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = AppleMusicRed,
-                                    selectedTextColor = AppleMusicRed,
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
                                     unselectedIconColor = LabelSecondaryDark,
                                     unselectedTextColor = LabelSecondaryDark,
                                     indicatorColor = Color.Transparent
@@ -182,13 +194,11 @@ fun MiniPlayer(
         )
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
+            MarqueeText(
                 text = song.title,
                 color = Color.White,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = song.artist,
@@ -207,6 +217,55 @@ fun MiniPlayer(
         IconButton(onClick = onNext) {
             Icon(Icons.Default.SkipNext, contentDescription = null, tint = Color.White)
         }
+    }
+}
+
+@Composable
+private fun MarqueeText(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = Color.White,
+    fontSize: TextUnit = 14.sp,
+    fontWeight: FontWeight = FontWeight.Medium,
+) {
+    var textWidth by remember { mutableIntStateOf(0) }
+    var containerWidth by remember { mutableIntStateOf(0) }
+    val scrollDistance = textWidth - containerWidth
+    val shouldScroll = scrollDistance > 0
+
+    val infiniteTransition = rememberInfiniteTransition(label = "marqueeTransition")
+    val animatedOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (shouldScroll) -scrollDistance.toFloat() else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 3000 + (scrollDistance.coerceAtLeast(0) * 5),
+                easing = LinearEasing
+            ),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "marqueeOffset"
+    )
+
+    Box(
+        modifier = modifier
+            .graphicsLayer { clip = true }
+            .onGloballyPositioned { coordinates: LayoutCoordinates ->
+                containerWidth = coordinates.size.width
+            }
+    ) {
+        Text(
+            text = text,
+            color = color,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            maxLines = 1,
+            overflow = TextOverflow.Visible,
+            onTextLayout = { layout: TextLayoutResult ->
+                textWidth = layout.size.width
+            },
+            modifier = Modifier.offset(x = with(LocalDensity.current) { animatedOffset.toDp() })
+        )
     }
 }
 

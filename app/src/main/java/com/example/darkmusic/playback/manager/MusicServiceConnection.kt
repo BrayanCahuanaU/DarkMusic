@@ -10,6 +10,7 @@ import com.example.darkmusic.domain.model.Song
 import com.example.darkmusic.playback.service.MusicService
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import com.example.darkmusic.core.preferences.SettingsManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +23,8 @@ import androidx.core.net.toUri
 class MusicServiceConnection @Inject constructor(
     @ApplicationContext context: Context,
     private val repository: com.example.darkmusic.domain.repository.MusicRepository,
-    private val recommendationEngine: com.example.darkmusic.domain.recommendation.RecommendationEngine
+    private val recommendationEngine: com.example.darkmusic.domain.recommendation.RecommendationEngine,
+    private val settingsManager: SettingsManager
 ) {
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private val _player = MutableStateFlow<Player?>(null)
@@ -151,8 +153,12 @@ class MusicServiceConnection @Inject constructor(
     private suspend fun resolveUri(song: Song): String? {
         return withContext(Dispatchers.IO) {
             if (song.isDownloaded && song.localPath != null) {
-                val file = java.io.File(song.localPath)
-                if (file.exists()) "file://${song.localPath}" else null
+                if (song.localPath!!.startsWith("content://")) {
+                    song.localPath
+                } else {
+                    val file = java.io.File(song.localPath)
+                    if (file.exists()) "file://${song.localPath}" else null
+                }
             } else {
                 repository.getStreamUrl(extractVideoId(song.id))
             }
@@ -168,8 +174,12 @@ class MusicServiceConnection @Inject constructor(
                 // Obtener URL del stream en IO
                 val streamUrl = withContext(Dispatchers.IO) {
                     if (song.isDownloaded && song.localPath != null) {
-                        val file = java.io.File(song.localPath)
-                        if (file.exists()) "file://${song.localPath}" else null
+                        if (song.localPath!!.startsWith("content://")) {
+                            song.localPath
+                        } else {
+                            val file = java.io.File(song.localPath)
+                            if (file.exists()) "file://${song.localPath}" else null
+                        }
                     } else {
                         repository.getStreamUrl(extractVideoId(song.id))
                     }
@@ -378,6 +388,7 @@ class MusicServiceConnection @Inject constructor(
 
     private fun checkAndTriggerRecommendations(player: Player) {
         if (isFetchingRecommendations) return
+        if (!settingsManager.getAutoPlayRelated()) return
         val remainingItems = player.mediaItemCount - player.currentMediaItemIndex - 1
         if (remainingItems <= 1) {
             scope.launch {

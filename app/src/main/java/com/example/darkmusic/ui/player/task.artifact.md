@@ -1,0 +1,8 @@
+- [/] Research search history implementation
+- [ ] Create `RecentSearchEntity` and `RecentSearchDao`
+- [ ] Update `MusicDatabase` and `SongMapper`
+- [ ] Update `MusicRepository` and `MusicRepositoryImpl`
+- [ ] Update `SearchState` and `SearchViewModel`
+- [ ] Update `SongItem` to support removal
+- [ ] Update `SearchScreen` UI
+- [ ] Verify functionality
